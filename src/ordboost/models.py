@@ -232,7 +232,9 @@ class OrdBoostClassifier(BaseEstimator, ClassifierMixin):
             for y_binary in binary_targets
         )
 
-        self.estimators_ = list(fitted_estimators)
+        self.estimators_ = cast(
+            list[HistGradientBoostingClassifier], list(fitted_estimators)
+        )
         return self
 
     def _enforce_monotonicity(self, cum_probs: np.ndarray) -> np.ndarray:
