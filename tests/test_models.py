@@ -140,9 +140,9 @@ class TestOrdBoostClassifier:
 
         cloned_model = clone(model)
 
-        assert cloned_model.max_iter == 20
-        assert cloned_model.kwargs.get("max_bins") == 64
-        assert cloned_model.random_state == 42
+        assert cloned_model.max_iter == 20  # type: ignore
+        assert cloned_model.kwargs.get("max_bins") == 64  # type: ignore
+        assert cloned_model.random_state == 42  # type: ignore
         # Ensure it's a fresh instance, not a reference copy
         assert cloned_model is not model
 
