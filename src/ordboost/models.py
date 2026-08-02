@@ -62,6 +62,7 @@ class OrdBoostClassifier(BaseEstimator, ClassifierMixin):
         Predict probability mass distributions wrapped in a `PredictiveDistribution`.
     predict(X)
         Predict point estimates (median or expected value) for X.
+
     """
 
     def __init__(
@@ -103,6 +104,7 @@ class OrdBoostClassifier(BaseEstimator, ClassifierMixin):
         -------
         params : dict
             Parameter names mapped to their values.
+
         """
         # Fetch standard explicit parameters from BaseEstimator
         params = super().get_params(deep=deep)
@@ -128,6 +130,7 @@ class OrdBoostClassifier(BaseEstimator, ClassifierMixin):
         -------
         self : OrdBoostClassifier
             Estimator instance.
+
         """
         if not params:
             return self
@@ -167,6 +170,7 @@ class OrdBoostClassifier(BaseEstimator, ClassifierMixin):
         -------
         HistGradientBoostingClassifier
             Fitted binary classifier instance for the specified threshold.
+
         """
         estimator = cast(
             HistGradientBoostingClassifier,
@@ -251,6 +255,7 @@ class OrdBoostClassifier(BaseEstimator, ClassifierMixin):
         np.ndarray
             2D array of shape (n_samples, n_edges) with monotonic non-decreasing
             cumulative probabilities across columns.
+
         """
         if self.monotonicity == "running_max":
             return np.maximum.accumulate(cum_probs, axis=1)
@@ -279,6 +284,7 @@ class OrdBoostClassifier(BaseEstimator, ClassifierMixin):
         -------
         np.ndarray
             2D float array of shape (n_samples, n_classes) containing class probabilities.
+
         """
         check_is_fitted(self, attributes=["classes_", "estimators_", "n_features_in_"])
         X_arr = check_array(X, ensure_2d=True)
@@ -346,6 +352,7 @@ class OrdBoostClassifier(BaseEstimator, ClassifierMixin):
         -------
         np.ndarray
             1D array of predicted values in physical target units.
+
         """
         dist = self.predict_dist(X)
         if method == "median":
