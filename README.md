@@ -1,6 +1,6 @@
 # ordboost
 
-![GitHub License](https://img.shields.io/github/license/Surgical-Recovery-and-Safety-Lab/ordboost)
+![License](https://img.shields.io/github/license/Surgical-Recovery-and-Safety-Lab/ordboost)(LICENSE)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-green.svg)](https://www.python.org/downloads/)
 [![tests](https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/actions/workflows/run_test.yml/badge.svg)?branch=main](https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/actions/workflows/run_test.yml)
 
