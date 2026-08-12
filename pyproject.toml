@@ -1,6 +1,5 @@
 [project]
 name = "ordboost"
-version = "0.1.0"
 description = "Non-parametric discrete ordinal gradient boosting with probabilistic prediction calibration."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -8,6 +7,7 @@ license = { text = "Apache-2.0" }
 authors = [
   { name = "Mathias Roesler", email = "mathias.roesler@auckland.ac.nz" }
 ]
+dynamic = ["version"]
 keywords = [
   "calibration",
   "gradient-boosting",
@@ -83,3 +83,6 @@ convention = "numpy"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.dynamic]
+version = { attr = "ordboost.__version__" }
