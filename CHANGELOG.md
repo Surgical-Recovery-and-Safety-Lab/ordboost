@@ -1,4 +1,3 @@
-
 # Changelog
 
 All notable changes to this project will be documented in this file.
@@ -21,3 +20,4 @@ and this project adheres to Semantic Versioning ([SemVer](https://semver.org/spe
 * Github workflow to run tests on push and pull request
 
 [0.1.1]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.1.0...v0.1.1
+[0.0.1]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/releases/tag/v0.1.0
