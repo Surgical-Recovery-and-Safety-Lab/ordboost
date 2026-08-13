@@ -12,11 +12,7 @@ from ordboost.distributions import (
     ContinuousPredictiveDistribution,
     DiscretePredictiveDistribution,
 )
-from ordboost.mappers import (
-    EmpiricalMeanBinMapper,
-    EmpiricalMedianBinMapper,
-    QuantileBinMapper,
-)
+from ordboost.mappers import EmpiricalMeanBinMapper, QuantileBinMapper
 from ordboost.models import OrdBoostClassifier, OrdBoostRegressor
 
 
@@ -449,6 +445,15 @@ class TestOrdBoostRegressorFit:
         X = np.ones((10, 2))
         y = np.ones(5)
         with pytest.raises(ValueError):
+            reg.fit(X, y)
+
+    def test_fit_mapper_not_BaseBinMapper(
+        self, synthetic_data: tuple[np.ndarray, np.ndarray]
+    ) -> None:
+        """Test case when mapper is not a BaseBinMapper."""
+        X, y = synthetic_data
+        reg = OrdBoostRegressor(max_iter=5, mapper="invalid")  # type: ignore
+        with pytest.raises(ValueError, match="BaseBinMapper"):
             reg.fit(X, y)
 
 
