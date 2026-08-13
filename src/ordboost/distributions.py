@@ -75,6 +75,7 @@ class PredictiveDistribution(ABC):
         return bounds[:, 0], bounds[:, 1]
 
 
+class DiscretePredictiveDistribution(PredictiveDistribution):
     """Encapsulates a discrete Probability Mass Function (PMF) matrix.
 
     Provides vectorized utilities for computing cumulative distribution
@@ -198,60 +199,12 @@ class PredictiveDistribution(ABC):
         if np.any((q_arr < 0.0) | (q_arr > 1.0)):
             raise ValueError("All quantiles in 'q' must lie within [0.0, 1.0].")
 
-        cdf = self.cdf  # shape: (n_samples, n_classes)
-
+        cdf = self.cdf
         if q_arr.ndim == 0:
-            # Single quantile scalar -> search along class axis
             indices = np.argmax(cdf >= q_arr, axis=1)
             return self.classes[indices]
 
-        # Array of quantiles -> broadcasting shape:
-        # (n_samples, 1, n_classes) vs (1, n_quantiles, 1)
-        cdf_expanded = cdf[:, np.newaxis, :]  # (n_samples, 1, n_classes)
-        q_expanded = q_arr[np.newaxis, :, np.newaxis]  # (1, n_quantiles, 1)
-
-        indices = np.argmax(
-            cdf_expanded >= q_expanded, axis=2
-        )  # (n_samples, n_quantiles)
+        cdf_expanded = cdf[:, np.newaxis, :]
+        q_expanded = q_arr[np.newaxis, :, np.newaxis]
+        indices = np.argmax(cdf_expanded >= q_expanded, axis=2)
         return self.classes[indices]
-
-    def median(self) -> np.ndarray:
-        """Calculate the 50th percentile (median) prediction for each sample.
-
-        Returns
-        -------
-        np.ndarray
-            1D array of shape (n_samples,) containing median class predictions.
-
-        """
-        return self.ppf(0.5)
-
-    def interval(self, alpha: float = 0.10) -> tuple[np.ndarray, np.ndarray]:
-        """Calculate central prediction bounds for a given significance level.
-
-        Parameters
-        ----------
-        alpha : float, default=0.10
-            Significance level. For example, `alpha=0.10` produces a 90%
-            central prediction interval [q(0.05), q(0.95)].
-
-        Returns
-        -------
-        tuple[np.ndarray, np.ndarray]
-            A tuple containing (lower_bounds, upper_bounds), each as a 1D array
-            of shape (n_samples,).
-
-        Raises
-        ------
-        ValueError
-            If `alpha` is not within (0.0, 1.0).
-
-        """
-        if not 0.0 < alpha < 1.0:
-            raise ValueError("Significance level 'alpha' must be between 0.0 and 1.0.")
-
-        lower_q = alpha / 2.0
-        upper_q = 1.0 - (alpha / 2.0)
-
-        bounds = self.ppf(np.array([lower_q, upper_q]))
-        return bounds[:, 0], bounds[:, 1]
