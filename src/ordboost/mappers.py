@@ -1,10 +1,11 @@
 """Base interfaces for bin-to-continuous target mappers."""
 
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Union
 
 import numpy as np
-from sklearn.base import BaseEstimator, TransformerMixin
+from numpy.typing import ArrayLike
+from sklearn.base import BaseEstimator, TransformerMixin, check_is_fitted
 
 from ordboost.distributions import ContinuousPredictiveDistribution
 
@@ -35,7 +36,7 @@ class BaseBinMapper(ABC, BaseEstimator, TransformerMixin):
 
     """
 
-    def __init__(self, bin_edges: Any) -> None:
+    def __init__(self, bin_edges: ArrayLike) -> None:
         self.bin_edges = bin_edges
 
     def _validate_edges(self) -> np.ndarray:
@@ -63,7 +64,9 @@ class BaseBinMapper(ABC, BaseEstimator, TransformerMixin):
         return edges
 
     @abstractmethod
-    def fit(self, y_continuous: Any, y_binned: Any = None) -> "BaseBinMapper":
+    def fit(
+        self, y_continuous: ArrayLike, y_binned: Union[ArrayLike, None] = None
+    ) -> "BaseBinMapper":
         """Compute empirical bin statistics from continuous training targets.
 
         Parameters
@@ -83,7 +86,7 @@ class BaseBinMapper(ABC, BaseEstimator, TransformerMixin):
         pass
 
     @abstractmethod
-    def transform(self, pmf: Any) -> np.ndarray:
+    def transform(self, pmf: ArrayLike) -> np.ndarray:
         """Map discrete PMF probability matrix to continuous expected values.
 
         Parameters
@@ -101,7 +104,7 @@ class BaseBinMapper(ABC, BaseEstimator, TransformerMixin):
         pass
 
     @abstractmethod
-    def to_continuous_dist(self, pmf: Any) -> ContinuousPredictiveDistribution:
+    def to_continuous_dist(self, pmf: ArrayLike) -> ContinuousPredictiveDistribution:
         """Construct a ContinuousPredictiveDistribution from a discrete PMF matrix.
 
         Parameters
