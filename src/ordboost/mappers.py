@@ -121,7 +121,7 @@ class BaseBinMapper(ABC, BaseEstimator, TransformerMixin):
         pass
 
 
-class EmpiricalMeanMapper(BaseBinMapper):
+class EmpiricalMeanBinMapper(BaseBinMapper):
     """Maps discrete bin probabilities using empirical intra-bin means.
 
     Computes the empirical mean of continuous targets within each bin during
@@ -160,7 +160,7 @@ class EmpiricalMeanMapper(BaseBinMapper):
 
     def fit(
         self, y_continuous: ArrayLike, y_binned: Union[ArrayLike, None] = None
-    ) -> "EmpiricalMeanMapper":
+    ) -> "EmpiricalMeanBinMapper":
         """Compute empirical bin means from continuous training targets.
 
         Parameters
@@ -173,7 +173,7 @@ class EmpiricalMeanMapper(BaseBinMapper):
 
         Returns
         -------
-        EmpiricalMeanMapper
+        EmpiricalMeanBinMapper
             Fitted mapper instance.
 
         Raises
@@ -305,7 +305,7 @@ class EmpiricalMeanMapper(BaseBinMapper):
         )
 
 
-class EmpiricalMedianMapper(BaseBinMapper):
+class EmpiricalMedianBinMapper(BaseBinMapper):
     """Maps discrete bin probabilities using empirical intra-bin medians.
 
     Computes the empirical median of continuous targets within each bin during
@@ -346,7 +346,7 @@ class EmpiricalMedianMapper(BaseBinMapper):
         self,
         y_continuous: ArrayLike,
         y_binned: Union[ArrayLike, None] = None,
-    ) -> "EmpiricalMedianMapper":
+    ) -> "EmpiricalMedianBinMapper":
         """Compute empirical bin medians from continuous training targets.
 
         Parameters
@@ -359,7 +359,7 @@ class EmpiricalMedianMapper(BaseBinMapper):
 
         Returns
         -------
-        EmpiricalMedianMapper
+        EmpiricalMedianBinMapper
             Fitted mapper instance.
 
         Raises
