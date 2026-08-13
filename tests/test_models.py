@@ -8,7 +8,7 @@ from sklearn.base import clone
 from sklearn.exceptions import NotFittedError
 from sklearn.model_selection import GridSearchCV
 
-from ordboost.distributions import PredictiveDistribution
+from ordboost.distributions import DiscretePredictiveDistribution
 from ordboost.models import OrdBoostClassifier
 
 
@@ -64,7 +64,7 @@ class TestOrdBoostClassifier:
 
         # Check predict_dist
         dist = model.predict_dist(X_test)
-        assert isinstance(dist, PredictiveDistribution)
+        assert isinstance(dist, DiscretePredictiveDistribution)
         np.testing.assert_array_equal(dist.classes, model.classes_)
 
     def test_kwargs_pass_through(

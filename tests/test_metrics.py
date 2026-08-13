@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from ordboost.distributions import PredictiveDistribution
+from ordboost.distributions import DiscretePredictiveDistribution
 from ordboost.metrics import crps_score, pinball_loss
 
 
@@ -11,7 +11,7 @@ class TestMetrics:
     """Tests for probabilistic metrics functions."""
 
     @pytest.fixture
-    def perfect_distribution(self) -> tuple[np.ndarray, PredictiveDistribution]:
+    def perfect_distribution(self) -> tuple[np.ndarray, DiscretePredictiveDistribution]:
         """Fixture providing a deterministic distribution with perfect predictions."""
         classes = np.array([0, 10, 20])
         # PMF places 100% weight on true target
@@ -23,11 +23,11 @@ class TestMetrics:
             ]
         )
         y_true = np.array([0, 10, 20])
-        dist = PredictiveDistribution(pmf=pmf, classes=classes)
+        dist = DiscretePredictiveDistribution(pmf=pmf, classes=classes)
         return y_true, dist
 
     def test_crps_perfect_predictions(
-        self, perfect_distribution: tuple[np.ndarray, PredictiveDistribution]
+        self, perfect_distribution: tuple[np.ndarray, DiscretePredictiveDistribution]
     ) -> None:
         """Test that a perfect deterministic forecast yields CRPS = 0.0."""
         y_true, dist = perfect_distribution
@@ -43,7 +43,7 @@ class TestMetrics:
         # Squared diff = [0.25, 0.04, 0.0] -> CRPS sum = 0.29
         pmf = np.array([[0.5, 0.3, 0.2]])
         y_true = np.array([10])
-        dist = PredictiveDistribution(pmf=pmf, classes=classes)
+        dist = DiscretePredictiveDistribution(pmf=pmf, classes=classes)
 
         score = crps_score(y_true, dist)
         assert score == pytest.approx(0.29, abs=1e-6)
@@ -61,7 +61,7 @@ class TestMetrics:
             ]
         )
         y_true = np.array([0, 0])
-        dist = PredictiveDistribution(pmf=pmf, classes=classes)
+        dist = DiscretePredictiveDistribution(pmf=pmf, classes=classes)
 
         weights = np.array([3.0, 1.0])  # 3:1 weight ratio
         score = crps_score(y_true, dist, sample_weight=weights)
@@ -72,7 +72,7 @@ class TestMetrics:
         """Test error when y_true contains values not in dist.classes."""
         classes = np.array([0, 10])
         pmf = np.ones((1, 2)) * 0.5
-        dist = PredictiveDistribution(pmf=pmf, classes=classes)
+        dist = DiscretePredictiveDistribution(pmf=pmf, classes=classes)
 
         # 99 is not in [0, 10]
         with pytest.raises(ValueError, match="not present in y_dist.classes"):
