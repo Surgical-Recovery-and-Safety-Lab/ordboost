@@ -1,30 +1,32 @@
 """Unit tests for BaseBinMapper in ordboost.debinning."""
 
-from typing import Any
-
 import numpy as np
 import pytest
+from numpy.typing import ArrayLike
+from sklearn.exceptions import NotFittedError
 
 from ordboost.distributions import ContinuousPredictiveDistribution
-from ordboost.mappers import BaseBinMapper
+from ordboost.mappers import BaseBinMapper, EmpiricalMeanMapper
 
 
 class DummyBinMapper(BaseBinMapper):
     """Minimal concrete implementation of BaseBinMapper for unit testing."""
 
-    def fit(self, y_continuous: Any, y_binned: Any = None) -> "DummyBinMapper":
+    def fit(
+        self, y_continuous: ArrayLike, y_binned: ArrayLike | None = None
+    ) -> "DummyBinMapper":
         """Dummy fit method."""
         self.bin_edges_ = self._validate_edges()
         self.n_bins_ = len(self.bin_edges_) - 1
         return self
 
-    def transform(self, pmf: Any) -> np.ndarray:
+    def transform(self, pmf: ArrayLike) -> np.ndarray:
         """Dummy transform method."""
         pmf_arr = np.asarray(pmf, dtype=float)
         midpoints = (self.bin_edges_[:-1] + self.bin_edges_[1:]) / 2.0
         return np.dot(pmf_arr, midpoints)
 
-    def to_continuous_dist(self, pmf: Any) -> ContinuousPredictiveDistribution:
+    def to_continuous_dist(self, pmf: ArrayLike) -> ContinuousPredictiveDistribution:
         """Dummy to_continuous_dist method."""
         pmf_arr = np.asarray(pmf, dtype=float)
         cum_pmf = np.hstack(
