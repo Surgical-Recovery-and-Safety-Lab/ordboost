@@ -11,6 +11,7 @@ from ordboost.mappers import (
     EmpiricalMeanBinMapper,
     EmpiricalMedianBinMapper,
     QuantileBinMapper,
+    UniformBinMapper,
 )
 
 
@@ -568,5 +569,118 @@ class TestQuantileBinMapperToContinuousDist:
     def test_to_continuous_dist_column_dimension_mismatch(self) -> None:
         """Test error handling when PMF columns mismatch fitted bin count."""
         mapper = QuantileBinMapper(bin_edges=[0, 10, 20]).fit([2, 15])
+        with pytest.raises(ValueError, match="PMF column dimension"):
+            mapper.to_continuous_dist([[0.3, 0.3, 0.4]])
+
+
+class TestUniformBinMapperInit:
+    """Tests for UniformBinMapper initialization."""
+
+    def test_init_stores_bin_edges(self) -> None:
+        """Verify __init__ correctly stores bin_edges attribute."""
+        edges = [0, 10, 20, 30]
+        mapper = UniformBinMapper(bin_edges=edges)
+        assert mapper.bin_edges == edges
+
+
+class TestUniformBinMapperFit:
+    """Tests for UniformBinMapper fit method and edge validation."""
+
+    def test_fit_success_without_targets(self) -> None:
+        """Test successful fit without providing y_continuous or y_binned."""
+        edges = [0.0, 10.0, 20.0, 50.0]
+        mapper = UniformBinMapper(bin_edges=edges)
+
+        fitted_mapper = mapper.fit()
+        assert fitted_mapper is mapper
+        assert mapper.n_bins_ == 3
+
+        expected_midpoints = np.array([5.0, 15.0, 35.0])
+        np.testing.assert_allclose(mapper.bin_midpoints_, expected_midpoints)
+
+    def test_fit_success_ignores_target_arguments(self) -> None:
+        """Test fit succeeds and midpoints remain invariant when y is provided."""
+        edges = [0.0, 10.0, 20.0]
+        mapper = UniformBinMapper(bin_edges=edges)
+
+        mapper.fit(y_continuous=[1.0, 19.0], y_binned=[0, 1])
+        expected_midpoints = np.array([5.0, 15.0])
+        np.testing.assert_allclose(mapper.bin_midpoints_, expected_midpoints)
+
+    def test_fit_invalid_bin_edges(self) -> None:
+        """Test that invalid bin edges raise ValueError during fit."""
+        mapper = UniformBinMapper(bin_edges=[0.0, 10.0, 5.0])
+        with pytest.raises(ValueError, match="strictly monotonically increasing"):
+            mapper.fit()
+
+
+class TestUniformBinMapperTransform:
+    """Tests for UniformBinMapper transform method and validation."""
+
+    def test_transform_success(self) -> None:
+        """Test mapping PMF matrix to continuous values weighted by midpoints."""
+        edges = [0.0, 10.0, 20.0]
+        mapper = UniformBinMapper(bin_edges=edges).fit()
+
+        pmf = np.array([[0.5, 0.5], [1.0, 0.0], [0.2, 0.8]])
+        expected = mapper.transform(pmf)
+
+        assert expected.shape == (3,)
+        assert expected[0] == pytest.approx(10.0)
+        assert expected[1] == pytest.approx(5.0)
+        assert expected[2] == pytest.approx(13.0)
+
+    def test_transform_not_fitted(self) -> None:
+        """Test calling transform on un-fitted instance raises NotFittedError."""
+        mapper = UniformBinMapper(bin_edges=[0, 10, 20])
+        with pytest.raises(NotFittedError):
+            mapper.transform([[0.5, 0.5]])
+
+    def test_transform_invalid_pmf_ndim(self) -> None:
+        """Test that 1D PMF raises ValueError."""
+        mapper = UniformBinMapper(bin_edges=[0, 10, 20]).fit()
+        with pytest.raises(ValueError, match="2D array"):
+            mapper.transform([0.5, 0.5])
+
+    def test_transform_column_dimension_mismatch(self) -> None:
+        """Test that PMF column count mismatch with n_bins_ raises ValueError."""
+        mapper = UniformBinMapper(bin_edges=[0, 10, 20]).fit()
+        invalid_pmf = np.array([[0.3, 0.3, 0.4]])
+        with pytest.raises(ValueError, match="PMF column dimension"):
+            mapper.transform(invalid_pmf)
+
+
+class TestUniformBinMapperToContinuousDist:
+    """Tests for UniformBinMapper to_continuous_dist method."""
+
+    def test_to_continuous_dist_success(self) -> None:
+        """Test converting discrete PMF matrix to ContinuousPredictiveDistribution."""
+        edges = [0.0, 10.0, 20.0]
+        mapper = UniformBinMapper(bin_edges=edges).fit()
+
+        pmf = np.array([[0.4, 0.6], [0.1, 0.9]])
+        dist = mapper.to_continuous_dist(pmf)
+
+        assert isinstance(dist, ContinuousPredictiveDistribution)
+        np.testing.assert_array_equal(dist.grid_y, np.array(edges))
+        assert dist.grid_cdf.shape == (2, 3)
+        np.testing.assert_allclose(dist.grid_cdf[0], [0.0, 0.4, 1.0])
+        np.testing.assert_allclose(dist.grid_cdf[1], [0.0, 0.1, 1.0])
+
+    def test_to_continuous_dist_not_fitted(self) -> None:
+        """Test calling to_continuous_dist on un-fitted instance raises NotFittedError."""
+        mapper = UniformBinMapper(bin_edges=[0, 10, 20])
+        with pytest.raises(NotFittedError):
+            mapper.to_continuous_dist([[0.5, 0.5]])
+
+    def test_to_continuous_dist_invalid_pmf_ndim(self) -> None:
+        """Test error handling when PMF is not 2D."""
+        mapper = UniformBinMapper(bin_edges=[0, 10, 20]).fit()
+        with pytest.raises(ValueError, match="2D array"):
+            mapper.to_continuous_dist([0.5, 0.5])
+
+    def test_to_continuous_dist_column_dimension_mismatch(self) -> None:
+        """Test error handling when PMF columns mismatch fitted bin count."""
+        mapper = UniformBinMapper(bin_edges=[0, 10, 20]).fit()
         with pytest.raises(ValueError, match="PMF column dimension"):
             mapper.to_continuous_dist([[0.3, 0.3, 0.4]])
