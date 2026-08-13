@@ -1,11 +1,80 @@
 """Predictive probability distributions for discrete ordinal outcomes."""
 
+from abc import ABC, abstractmethod
 from typing import Union
 
 import numpy as np
 
 
-class PredictiveDistribution:
+class PredictiveDistribution(ABC):
+    """Abstract base class for all predictive probability distributions.
+
+    Defines a unified interface for extracting point estimates, quantiles,
+    prediction intervals, and cumulative probabilities regardless of whether
+    the distribution is discrete or continuous.
+
+    Methods
+    -------
+    mean()
+        Calculate expected values across samples.
+    median()
+        Calculate 50th percentile predictions across samples.
+    ppf(q)
+        Calculate percent point function (inverse CDF / quantiles).
+    interval(alpha=0.10)
+        Calculate central prediction bounds for a given significance level.
+
+    """
+
+    @abstractmethod
+    def mean(self) -> np.ndarray:
+        """Calculate the expected value for each sample."""
+        pass
+
+    @abstractmethod
+    def ppf(self, q: Union[float, np.ndarray]) -> np.ndarray:
+        """Percent Point Function (inverse CDF / quantile calculation)."""
+        pass
+
+    def median(self) -> np.ndarray:
+        """Calculate the 50th percentile (median) prediction for each sample.
+
+        Returns
+        -------
+        np.ndarray
+            1D array of shape (n_samples,) containing median predictions.
+
+        """
+        return self.ppf(0.5)
+
+    def interval(self, alpha: float = 0.10) -> tuple[np.ndarray, np.ndarray]:
+        """Calculate central prediction bounds for a given significance level.
+
+        Parameters
+        ----------
+        alpha : float, default=0.10
+            Significance level (e.g., alpha=0.10 yields a 90% central interval).
+
+        Returns
+        -------
+        tuple[np.ndarray, np.ndarray]
+            Tuple of (lower_bounds, upper_bounds), each as a 1D array.
+
+        Raises
+        ------
+        ValueError
+            If `alpha` is not strictly within (0.0, 1.0).
+
+        """
+        if not 0.0 < alpha < 1.0:
+            raise ValueError("Significance level 'alpha' must be between 0.0 and 1.0.")
+
+        lower_q = alpha / 2.0
+        upper_q = 1.0 - (alpha / 2.0)
+        bounds = self.ppf(np.array([lower_q, upper_q]))
+        return bounds[:, 0], bounds[:, 1]
+
+
     """Encapsulates a discrete Probability Mass Function (PMF) matrix.
 
     Provides vectorized utilities for computing cumulative distribution
