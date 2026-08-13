@@ -489,3 +489,216 @@ class EmpiricalMedianMapper(BaseBinMapper):
         return ContinuousPredictiveDistribution(
             grid_y=self.bin_edges_, grid_cdf=grid_cdf
         )
+
+
+class QuantileBinMapper(BaseBinMapper):
+    """Maps discrete bin probabilities using intra-bin empirical quantiles.
+
+    Fits intra-bin empirical quantiles from continuous training targets to build
+    a fine-grained sub-grid. Constructing a continuous distribution on this grid
+    allows for smoother cumulative distribution function (CDF) curves and more
+    accurate continuous quantile predictions in wide or skewed bins.
+
+    Parameters
+    ----------
+    bin_edges : ArrayLike of shape (n_bins + 1,)
+        Monotonically increasing boundaries defining continuous bin intervals.
+    quantiles : ArrayLike of shape (n_quantiles,), default=(0.25, 0.50, 0.75)
+        Intra-bin quantile levels strictly in the range (0.0, 1.0) used to
+        construct the fine-grained continuous grid.
+
+    Attributes
+    ----------
+    bin_edges_ : np.ndarray
+        1D float array of shape (n_bins + 1,) containing validated bin edges.
+    quantiles_ : np.ndarray
+        1D float array containing validated intra-bin quantile levels.
+    grid_y_ : np.ndarray
+        1D float array containing sub-grid target values in ascending order.
+    grid_cdf_weights_ : np.ndarray
+        1D float array containing sub-grid weights along bin threshold indices.
+    n_bins_ : int
+        Number of discrete bins defined by `bin_edges_`.
+
+    Methods
+    -------
+    fit(y_continuous, y_binned=None)
+        Compute intra-bin empirical quantiles from continuous training targets.
+    transform(pmf)
+        Map discrete PMF probability matrix to continuous expected values.
+    to_continuous_dist(pmf)
+        Construct a ContinuousPredictiveDistribution over the fitted sub-grid.
+
+    """
+
+    def __init__(
+        self,
+        bin_edges: ArrayLike,
+        quantiles: ArrayLike = (0.25, 0.50, 0.75),
+    ) -> None:
+        super().__init__(bin_edges=bin_edges)
+        self.quantiles = quantiles
+
+    def fit(
+        self,
+        y_continuous: ArrayLike,
+        y_binned: Union[ArrayLike, None] = None,
+    ) -> "QuantileBinMapper":
+        """Compute intra-bin empirical quantiles from continuous training targets.
+
+        Parameters
+        ----------
+        y_continuous : ArrayLike of shape (n_samples,)
+            Unbinned continuous target values (e.g., exact physical units).
+        y_binned : ArrayLike of shape (n_samples,), optional
+            Corresponding 0-indexed discrete bin labels. If None, labels are
+            computed automatically from `bin_edges`.
+
+        Returns
+        -------
+        QuantileBinMapper
+            Fitted mapper instance.
+
+        Raises
+        ------
+        ValueError
+            If `bin_edges` is invalid, `quantiles` lie outside (0, 1),
+            `y_continuous` is not 1D, or `y_binned` shape mismatches.
+
+        """
+        edges = self._validate_edges()
+        q_arr = np.sort(np.asarray(self.quantiles, dtype=float))
+
+        if q_arr.ndim != 1 or len(q_arr) == 0:
+            raise ValueError("Expected 'quantiles' to be a non-empty 1D array-like.")
+        if np.any((q_arr <= 0.0) | (q_arr >= 1.0)):
+            raise ValueError(
+                "All intra-bin quantiles must lie strictly within (0.0, 1.0)."
+            )
+
+        y_cont = np.asarray(y_continuous, dtype=float)
+        if y_cont.ndim != 1:
+            raise ValueError("Expected 'y_continuous' to be a 1D array.")
+
+        self.bin_edges_ = edges
+        self.quantiles_ = q_arr
+        self.n_bins_ = len(edges) - 1
+
+        if y_binned is None:
+            # Digitize continuous targets into 0-indexed bins [0, n_bins - 1]
+            binned = np.digitize(y_cont, edges[1:-1])
+        else:
+            binned = np.asarray(y_binned, dtype=int)
+            if binned.shape != y_cont.shape:
+                raise ValueError(
+                    f"Shape mismatch: 'y_binned' shape {binned.shape} "
+                    f"does not match 'y_continuous' shape {y_cont.shape}."
+                )
+
+        grid_y = [edges[0]]
+        grid_weights = [0.0]
+
+        for k in range(self.n_bins_):
+            mask = binned == k
+            low, high = edges[k], edges[k + 1]
+
+            if np.any(mask):
+                sub_q = np.quantile(y_cont[mask], self.quantiles_)
+                sub_q = np.clip(sub_q, low, high)
+            else:
+                # Interpolate linear fraction if bin k has no training samples
+                sub_q = low + (high - low) * self.quantiles_
+
+            grid_y.extend(sub_q)
+            grid_weights.extend(k + self.quantiles_)
+
+            grid_y.append(high)
+            grid_weights.append(float(k + 1))
+
+        self.grid_y_ = np.array(grid_y, dtype=float)
+        self.grid_cdf_weights_ = np.array(grid_weights, dtype=float)
+
+        return self
+
+    def transform(self, pmf: ArrayLike) -> np.ndarray:
+        """Map discrete PMF probability matrix to continuous expected values.
+
+        Parameters
+        ----------
+        pmf : ArrayLike of shape (n_samples, n_bins)
+            Probability mass function matrix where rows sum to 1.0.
+
+        Returns
+        -------
+        np.ndarray
+            1D float array of shape (n_samples,) containing continuous
+            expected target values evaluated over the fitted sub-grid.
+
+        Raises
+        ------
+        NotFittedError
+            If the mapper instance has not been fitted prior to calling transform.
+        ValueError
+            If `pmf` is not a 2D array or column count does not match `n_bins_`.
+
+        """
+        dist = self.to_continuous_dist(pmf)
+        return dist.mean()
+
+    def to_continuous_dist(self, pmf: ArrayLike) -> ContinuousPredictiveDistribution:
+        """Construct a ContinuousPredictiveDistribution over the fitted sub-grid.
+
+        Parameters
+        ----------
+        pmf : ArrayLike of shape (n_samples, n_bins)
+            Discrete probability mass function matrix where rows sum to 1.0.
+
+        Returns
+        -------
+        ContinuousPredictiveDistribution
+            Continuous distribution evaluated over sub-grid `grid_y_`.
+
+        Raises
+        ------
+        NotFittedError
+            If the mapper instance has not been fitted prior to calling.
+        ValueError
+            If `pmf` is not a 2D array or column count does not match `n_bins_`.
+
+        """
+        check_is_fitted(
+            self,
+            attributes=[
+                "bin_edges_",
+                "quantiles_",
+                "grid_y_",
+                "grid_cdf_weights_",
+                "n_bins_",
+            ],
+        )
+        pmf_arr = np.asarray(pmf, dtype=float)
+
+        if pmf_arr.ndim != 2:
+            raise ValueError("Expected 'pmf' to be a 2D array.")
+        if pmf_arr.shape[1] != self.n_bins_:
+            raise ValueError(
+                f"PMF column dimension ({pmf_arr.shape[1]}) does not match "
+                f"fitted bin count ({self.n_bins_})."
+            )
+
+        n_samples = pmf_arr.shape[0]
+        cum_pmf = np.hstack(
+            [
+                np.zeros((n_samples, 1), dtype=float),
+                np.cumsum(pmf_arr, axis=1),
+            ]
+        )
+
+        x_grid = np.arange(self.n_bins_ + 1, dtype=float)
+        n_grid = len(self.grid_y_)
+        grid_cdf = np.empty((n_samples, n_grid), dtype=float)
+
+        for i in range(n_samples):
+            grid_cdf[i] = np.interp(self.grid_cdf_weights_, x_grid, cum_pmf[i])
+
+        return ContinuousPredictiveDistribution(grid_y=self.grid_y_, grid_cdf=grid_cdf)
