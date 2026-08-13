@@ -8,8 +8,16 @@ from sklearn.base import clone
 from sklearn.exceptions import NotFittedError
 from sklearn.model_selection import GridSearchCV
 
-from ordboost.distributions import DiscretePredictiveDistribution
-from ordboost.models import OrdBoostClassifier
+from ordboost.distributions import (
+    ContinuousPredictiveDistribution,
+    DiscretePredictiveDistribution,
+)
+from ordboost.mappers import (
+    EmpiricalMeanBinMapper,
+    EmpiricalMedianBinMapper,
+    QuantileBinMapper,
+)
+from ordboost.models import OrdBoostClassifier, OrdBoostRegressor
 
 
 class TestOrdBoostClassifier:
@@ -303,3 +311,249 @@ class TestOrdBoostClassifier:
 
         with pytest.raises(ValueError, match="Invalid prediction method"):
             model.predict(X_test, method="invalid_method")  # type: ignore[arg-type]
+
+
+class TestOrdBoostRegressorInit:
+    """Tests for OrdBoostRegressor initialization."""
+
+    def test_init_default_params(self) -> None:
+        """Verify default hyperparameter assignment during initialization."""
+        reg = OrdBoostRegressor()
+        assert reg.n_bins == 20
+        assert reg.bin_edges is None
+        assert reg.bin_strategy == "quantile"
+        assert reg.mapper is None
+        assert reg.learning_rate == 0.1
+        assert reg.max_iter == 100
+
+
+class TestOrdBoostRegressorComputeBinEdges:
+    """Tests for _compute_bin_edges private method."""
+
+    def test_custom_bin_edges_valid(self) -> None:
+        """Test explicit valid bin_edges array."""
+        edges = [0.0, 10.0, 20.0, 50.0]
+        reg = OrdBoostRegressor(bin_edges=edges)
+        y = np.array([1.0, 15.0, 40.0])
+        resolved_edges = reg._compute_bin_edges(y)
+        np.testing.assert_array_equal(resolved_edges, edges)
+
+    def test_custom_bin_edges_invalid_ndim(self) -> None:
+        """Test that 2D bin_edges raises ValueError."""
+        reg = OrdBoostRegressor(bin_edges=np.array([[0, 10], [10, 20]]))
+        with pytest.raises(ValueError, match="1D array with >= 2 edges"):
+            reg._compute_bin_edges(np.array([1.0, 2.0]))
+
+    def test_custom_bin_edges_too_few_edges(self) -> None:
+        """Test that fewer than 2 edges raises ValueError."""
+        reg = OrdBoostRegressor(bin_edges=[10.0])
+        with pytest.raises(ValueError, match=">= 2 edges"):
+            reg._compute_bin_edges(np.array([1.0, 2.0]))
+
+    def test_custom_bin_edges_non_monotonic(self) -> None:
+        """Test non-monotonically increasing edges raise ValueError."""
+        reg = OrdBoostRegressor(bin_edges=[0.0, 10.0, 5.0])
+        with pytest.raises(ValueError, match="strictly monotonically increasing"):
+            reg._compute_bin_edges(np.array([1.0, 2.0]))
+
+    def test_n_bins_too_small(self) -> None:
+        """Test that n_bins < 2 raises ValueError."""
+        reg = OrdBoostRegressor(n_bins=1)
+        with pytest.raises(ValueError, match="Parameter 'n_bins' must be >= 2"):
+            reg._compute_bin_edges(np.array([1.0, 2.0]))
+
+    def test_bin_strategy_quantile(self) -> None:
+        """Test quantile bin strategy computation."""
+        reg = OrdBoostRegressor(n_bins=4, bin_strategy="quantile")
+        y = np.linspace(0.0, 100.0, 101)
+        edges = reg._compute_bin_edges(y)
+        assert len(edges) == 5
+        np.testing.assert_allclose(edges, [0.0, 25.0, 50.0, 75.0, 100.0])
+
+    def test_bin_strategy_uniform(self) -> None:
+        """Test uniform bin strategy computation."""
+        reg = OrdBoostRegressor(n_bins=4, bin_strategy="uniform")
+        y = np.array([0.0, 100.0])
+        edges = reg._compute_bin_edges(y)
+        assert len(edges) == 5
+        np.testing.assert_allclose(edges, [0.0, 25.0, 50.0, 75.0, 100.0])
+
+    def test_bin_strategy_invalid(self) -> None:
+        """Test that invalid bin strategy raises ValueError."""
+        reg = OrdBoostRegressor(bin_strategy="invalid")  # type: ignore[arg-type]
+        with pytest.raises(ValueError, match="Invalid bin_strategy"):
+            reg._compute_bin_edges(np.array([1.0, 2.0]))
+
+
+class TestOrdBoostRegressorFit:
+    """Tests for OrdBoostRegressor fit method."""
+
+    @pytest.fixture
+    def synthetic_data(self) -> tuple[np.ndarray, np.ndarray]:
+        """Fixture providing synthetic 2D feature matrix and continuous target."""
+        rng = np.random.default_rng(42)
+        X = rng.standard_normal((50, 3))
+        y = X[:, 0] * 10.0 + rng.standard_normal(50)
+        return X, y
+
+    def test_fit_success_default_mapper(
+        self, synthetic_data: tuple[np.ndarray, np.ndarray]
+    ) -> None:
+        """Test fitting model with default settings."""
+        X, y = synthetic_data
+        reg = OrdBoostRegressor(n_bins=5, max_iter=5, random_state=42)
+        fitted_reg = reg.fit(X, y)
+
+        assert fitted_reg is reg
+        assert hasattr(reg, "classifier_")
+        assert hasattr(reg, "mapper_")
+        assert hasattr(reg, "bin_edges_")
+        assert reg.n_features_in_ == 3
+        assert len(reg.bin_edges_) >= 2
+
+    def test_fit_with_custom_mean_mapper(
+        self, synthetic_data: tuple[np.ndarray, np.ndarray]
+    ) -> None:
+        """Test fitting model with explicit EmpiricalMeanBinMapper instance."""
+        X, y = synthetic_data
+        custom_mapper = EmpiricalMeanBinMapper(bin_edges=[0.0, 1.0])
+        reg = OrdBoostRegressor(
+            n_bins=5, mapper=custom_mapper, max_iter=5, random_state=42
+        )
+        reg.fit(X, y)
+
+        assert isinstance(reg.mapper_, EmpiricalMeanBinMapper)
+
+    def test_fit_with_custom_quantile_mapper(
+        self, synthetic_data: tuple[np.ndarray, np.ndarray]
+    ) -> None:
+        """Test fitting model with explicit QuantileBinMapper instance."""
+        X, y = synthetic_data
+        custom_mapper = QuantileBinMapper(bin_edges=[0.0, 1.0])
+        reg = OrdBoostRegressor(
+            n_bins=5, mapper=custom_mapper, max_iter=5, random_state=42
+        )
+        reg.fit(X, y)
+
+        assert isinstance(reg.mapper_, QuantileBinMapper)
+
+    def test_fit_1d_X_raises_error(self) -> None:
+        """Test that passing 1D X feature matrix raises ValueError."""
+        reg = OrdBoostRegressor(max_iter=5)
+        with pytest.raises(ValueError):
+            reg.fit(X=np.array([1.0, 2.0, 3.0]), y=np.array([1.0, 2.0, 3.0]))
+
+    def test_fit_shape_mismatch(self) -> None:
+        """Test error handling when X and y sample counts mismatch."""
+        reg = OrdBoostRegressor(max_iter=5)
+        X = np.ones((10, 2))
+        y = np.ones(5)
+        with pytest.raises(ValueError):
+            reg.fit(X, y)
+
+
+class TestOrdBoostRegressorPredict:
+    """Tests for OrdBoostRegressor predict method."""
+
+    @pytest.fixture
+    def fitted_model(self) -> tuple[OrdBoostRegressor, np.ndarray, np.ndarray]:
+        """Fixture providing fitted regressor with synthetic dataset."""
+        rng = np.random.default_rng(42)
+        X = rng.standard_normal((30, 2))
+        y = X[:, 0] * 5.0 + 10.0
+        reg = OrdBoostRegressor(n_bins=4, max_iter=5, random_state=42)
+        reg.fit(X, y)
+        return reg, X, y
+
+    def test_predict_mean_and_median(
+        self, fitted_model: tuple[OrdBoostRegressor, np.ndarray, np.ndarray]
+    ) -> None:
+        """Test predict with mean and median point estimation methods."""
+        reg, X, _ = fitted_model
+
+        preds_mean = reg.predict(X, method="mean")
+        assert preds_mean.shape == (30,)
+        assert np.issubdtype(preds_mean.dtype, np.floating)
+
+        preds_median = reg.predict(X, method="median")
+        assert preds_median.shape == (30,)
+
+    def test_predict_single_sample_2d(
+        self, fitted_model: tuple[OrdBoostRegressor, np.ndarray, np.ndarray]
+    ) -> None:
+        """Test predicting on single 2D sample array of shape (1, n_features)."""
+        reg, X, _ = fitted_model
+        single_sample = X[[0]]  # Shape: (1, 2)
+
+        pred = reg.predict(single_sample)
+        assert pred.shape == (1,)
+
+    def test_predict_single_sample_1d_raises_error(
+        self, fitted_model: tuple[OrdBoostRegressor, np.ndarray, np.ndarray]
+    ) -> None:
+        """Test that passing 1D single sample array raises ValueError."""
+        reg, X, _ = fitted_model
+        single_sample_1d = X[0]  # Shape: (2,)
+
+        with pytest.raises(ValueError, match="Expected 2D array"):
+            reg.predict(single_sample_1d)
+
+    def test_predict_not_fitted_raises_error(self) -> None:
+        """Test calling predict on unfitted estimator raises NotFittedError."""
+        reg = OrdBoostRegressor()
+        with pytest.raises(NotFittedError):
+            reg.predict(np.ones((2, 2)))
+
+    def test_predict_invalid_method(
+        self, fitted_model: tuple[OrdBoostRegressor, np.ndarray, np.ndarray]
+    ) -> None:
+        """Test passing invalid point prediction strategy raises ValueError."""
+        reg, X, _ = fitted_model
+        with pytest.raises(ValueError, match="Invalid method"):
+            reg.predict(X, method="invalid")  # type: ignore[arg-type]
+
+
+class TestOrdBoostRegressorPredictDist:
+    """Tests for OrdBoostRegressor predict_dist method."""
+
+    @pytest.fixture
+    def fitted_model(self) -> tuple[OrdBoostRegressor, np.ndarray, np.ndarray]:
+        """Fixture providing fitted regressor instance."""
+        rng = np.random.default_rng(42)
+        X = rng.standard_normal((30, 2))
+        y = X[:, 0] * 5.0 + 10.0
+        reg = OrdBoostRegressor(n_bins=4, max_iter=5, random_state=42)
+        reg.fit(X, y)
+        return reg, X, y
+
+    def test_predict_dist_returns_continuous_dist(
+        self, fitted_model: tuple[OrdBoostRegressor, np.ndarray, np.ndarray]
+    ) -> None:
+        """Test predict_dist produces ContinuousPredictiveDistribution."""
+        reg, X, _ = fitted_model
+        dist = reg.predict_dist(X)
+
+        assert isinstance(dist, ContinuousPredictiveDistribution)
+        assert dist.grid_cdf.shape[0] == 30
+
+    def test_predict_dist_single_sample_evaluations(
+        self, fitted_model: tuple[OrdBoostRegressor, np.ndarray, np.ndarray]
+    ) -> None:
+        """Test evaluating distribution methods on single sample forecast."""
+        reg, X, _ = fitted_model
+        single_sample = X[[0]]
+
+        dist = reg.predict_dist(single_sample)
+        assert dist.mean().shape == (1,)
+        assert dist.median().shape == (1,)
+        assert dist.cdf(10.0).shape == (1,)
+
+        lower, upper = dist.interval(alpha=0.10)
+        assert lower.shape == (1,)
+        assert upper.shape == (1,)
+
+    def test_predict_dist_not_fitted_raises_error(self) -> None:
+        """Test calling predict_dist prior to fit raises NotFittedError."""
+        reg = OrdBoostRegressor()
+        with pytest.raises(NotFittedError):
+            reg.predict_dist(np.ones((2, 2)))
