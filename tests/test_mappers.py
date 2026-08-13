@@ -6,7 +6,12 @@ from numpy.typing import ArrayLike
 from sklearn.exceptions import NotFittedError
 
 from ordboost.distributions import ContinuousPredictiveDistribution
-from ordboost.mappers import BaseBinMapper, EmpiricalMeanMapper, EmpiricalMedianMapper
+from ordboost.mappers import (
+    BaseBinMapper,
+    EmpiricalMeanMapper,
+    EmpiricalMedianMapper,
+    QuantileBinMapper,
+)
 
 
 class DummyBinMapper(BaseBinMapper):
@@ -403,5 +408,165 @@ class TestEmpiricalMedianMapperToContinuousDist:
     def test_to_continuous_dist_column_dimension_mismatch(self) -> None:
         """Test error handling when PMF columns mismatch fitted bin count."""
         mapper = EmpiricalMedianMapper(bin_edges=[0, 10, 20]).fit([2, 15])
+        with pytest.raises(ValueError, match="PMF column dimension"):
+            mapper.to_continuous_dist([[0.3, 0.3, 0.4]])
+
+
+class TestQuantileBinMapperInit:
+    """Tests for QuantileBinMapper initialization."""
+
+    def test_init_stores_parameters(self) -> None:
+        """Verify __init__ correctly stores bin_edges and quantiles attributes."""
+        edges = [0, 10, 20]
+        q_tuple = (0.1, 0.5, 0.9)
+        mapper = QuantileBinMapper(bin_edges=edges, quantiles=q_tuple)
+        assert mapper.bin_edges == edges
+        assert mapper.quantiles == q_tuple
+
+
+class TestQuantileBinMapperFit:
+    """Tests for QuantileBinMapper fit method, sub-grid logic, and failure modes."""
+
+    def test_fit_success_subgrid_construction(self) -> None:
+        """Test successful fit and sub-grid point generation across populated bins."""
+        edges = [0.0, 10.0, 20.0]
+        # Bin 0 ([0, 10)): [1.0, 2.0, 3.0, 4.0, 5.0]
+        # Bin 1 ([10, 20)): [11.0, 12.0, 13.0, 14.0, 15.0]
+        y_cont = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 11.0, 12.0, 13.0, 14.0, 15.0])
+        quantiles = (0.25, 0.50, 0.75)
+        mapper = QuantileBinMapper(bin_edges=edges, quantiles=quantiles)
+
+        fitted_mapper = mapper.fit(y_cont)
+        assert fitted_mapper is mapper
+        assert mapper.n_bins_ == 2
+        np.testing.assert_array_equal(mapper.quantiles_, np.array([0.25, 0.50, 0.75]))
+
+        # Grid points: 1 (start) + 2 bins * (3 quantiles + 1 upper edge) = 9 points
+        assert len(mapper.grid_y_) == 9
+        assert len(mapper.grid_cdf_weights_) == 9
+
+        # Verify grid weights: [0.0, 0.25, 0.50, 0.75, 1.0, 1.25, 1.50, 1.75, 2.0]
+        expected_weights = np.array([0.0, 0.25, 0.50, 0.75, 1.0, 1.25, 1.50, 1.75, 2.0])
+        np.testing.assert_allclose(mapper.grid_cdf_weights_, expected_weights)
+
+    def test_fit_success_explicit_y_binned(self) -> None:
+        """Test successful fit when explicit y_binned array is provided."""
+        edges = [0.0, 10.0, 20.0]
+        y_cont = np.array([1.0, 5.0, 15.0])
+        y_binned = np.array([0, 0, 1])
+
+        mapper = QuantileBinMapper(bin_edges=edges)
+        mapper.fit(y_cont, y_binned=y_binned)
+        assert len(mapper.grid_y_) == 9
+
+    def test_fit_empty_bin_fallback(self) -> None:
+        """Test fallback linear fraction sub-grid construction for empty bins."""
+        edges = [0.0, 10.0, 20.0]
+        # Bin 1 ([10, 20)) has zero samples
+        y_cont = np.array([2.0, 4.0, 6.0, 8.0])
+
+        mapper = QuantileBinMapper(bin_edges=edges, quantiles=(0.25, 0.50, 0.75))
+        mapper.fit(y_cont)
+
+        # Empty bin 1 quantiles should fall back to 10 + 10 * [0.25, 0.5, 0.75]
+        expected_bin1_subgrid = np.array([12.5, 15.0, 17.5])
+        np.testing.assert_allclose(mapper.grid_y_[5:8], expected_bin1_subgrid)
+
+    @pytest.mark.parametrize("invalid_q", [[0.0, 0.5], [0.5, 1.0], [-0.1], [1.2]])
+    def test_fit_invalid_quantiles_range(self, invalid_q: list[float]) -> None:
+        """Test that quantiles outside (0.0, 1.0) raise ValueError."""
+        mapper = QuantileBinMapper(bin_edges=[0, 10, 20], quantiles=invalid_q)
+        with pytest.raises(ValueError, match="strictly within \\(0.0, 1.0\\)"):
+            mapper.fit([1.0, 12.0])
+
+    def test_fit_invalid_quantiles_empty_or_ndim(self) -> None:
+        """Test that empty or multi-dimensional quantiles raise ValueError."""
+        mapper_empty = QuantileBinMapper(bin_edges=[0, 10, 20], quantiles=[])
+        with pytest.raises(ValueError, match="non-empty 1D array-like"):
+            mapper_empty.fit([1.0, 12.0])
+
+    def test_fit_invalid_y_continuous_ndim(self) -> None:
+        """Test that 2D y_continuous raises ValueError."""
+        mapper = QuantileBinMapper(bin_edges=[0, 10, 20])
+        with pytest.raises(ValueError, match="1D array"):
+            mapper.fit(np.ones((5, 2)))
+
+    def test_fit_y_binned_shape_mismatch(self) -> None:
+        """Test error handling when y_binned shape mismatches y_continuous."""
+        mapper = QuantileBinMapper(bin_edges=[0, 10, 20])
+        with pytest.raises(ValueError, match="Shape mismatch"):
+            mapper.fit(y_continuous=[1, 2, 3], y_binned=[0, 1])
+
+
+class TestQuantileBinMapperTransform:
+    """Tests for QuantileBinMapper transform method and validation."""
+
+    def test_transform_success(self) -> None:
+        """Test mapping PMF matrix to continuous expected values over sub-grid."""
+        edges = [0.0, 10.0, 20.0]
+        y_cont = np.array([1.0, 5.0, 9.0, 11.0, 15.0, 19.0])
+        mapper = QuantileBinMapper(bin_edges=edges).fit(y_cont)
+
+        pmf = np.array([[0.5, 0.5], [1.0, 0.0]])
+        expected = mapper.transform(pmf)
+
+        assert expected.shape == (2,)
+        assert isinstance(expected[0], float)
+
+    def test_transform_not_fitted(self) -> None:
+        """Test calling transform on un-fitted instance raises NotFittedError."""
+        mapper = QuantileBinMapper(bin_edges=[0, 10, 20])
+        with pytest.raises(NotFittedError):
+            mapper.transform([[0.5, 0.5]])
+
+    def test_transform_invalid_pmf_ndim(self) -> None:
+        """Test that 1D PMF raises ValueError."""
+        mapper = QuantileBinMapper(bin_edges=[0, 10, 20]).fit([2, 15])
+        with pytest.raises(ValueError, match="2D array"):
+            mapper.transform([0.5, 0.5])
+
+    def test_transform_column_dimension_mismatch(self) -> None:
+        """Test that PMF column count mismatch with n_bins_ raises ValueError."""
+        mapper = QuantileBinMapper(bin_edges=[0, 10, 20]).fit([2, 15])
+        invalid_pmf = np.array([[0.3, 0.3, 0.4]])
+        with pytest.raises(ValueError, match="PMF column dimension"):
+            mapper.transform(invalid_pmf)
+
+
+class TestQuantileBinMapperToContinuousDist:
+    """Tests for QuantileBinMapper to_continuous_dist method."""
+
+    def test_to_continuous_dist_success(self) -> None:
+        """Test constructing ContinuousPredictiveDistribution over sub-grid."""
+        edges = [0.0, 10.0, 20.0]
+        y_cont = np.array([1.0, 5.0, 9.0, 11.0, 15.0, 19.0])
+        mapper = QuantileBinMapper(bin_edges=edges).fit(y_cont)
+
+        pmf = np.array([[0.4, 0.6], [0.8, 0.2]])
+        dist = mapper.to_continuous_dist(pmf)
+
+        assert isinstance(dist, ContinuousPredictiveDistribution)
+        assert dist.grid_cdf.shape == (2, len(mapper.grid_y_))
+        np.testing.assert_array_equal(dist.grid_y, mapper.grid_y_)
+
+        # Start of CDF must be 0.0 and end must be 1.0
+        np.testing.assert_allclose(dist.grid_cdf[:, 0], [0.0, 0.0])
+        np.testing.assert_allclose(dist.grid_cdf[:, -1], [1.0, 1.0])
+
+    def test_to_continuous_dist_not_fitted(self) -> None:
+        """Test calling to_continuous_dist on un-fitted instance raises NotFittedError."""
+        mapper = QuantileBinMapper(bin_edges=[0, 10, 20])
+        with pytest.raises(NotFittedError):
+            mapper.to_continuous_dist([[0.5, 0.5]])
+
+    def test_to_continuous_dist_invalid_pmf_ndim(self) -> None:
+        """Test error handling when PMF is not 2D."""
+        mapper = QuantileBinMapper(bin_edges=[0, 10, 20]).fit([2, 15])
+        with pytest.raises(ValueError, match="2D array"):
+            mapper.to_continuous_dist([0.5, 0.5])
+
+    def test_to_continuous_dist_column_dimension_mismatch(self) -> None:
+        """Test error handling when PMF columns mismatch fitted bin count."""
+        mapper = QuantileBinMapper(bin_edges=[0, 10, 20]).fit([2, 15])
         with pytest.raises(ValueError, match="PMF column dimension"):
             mapper.to_continuous_dist([[0.3, 0.3, 0.4]])
