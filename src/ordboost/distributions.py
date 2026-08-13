@@ -208,3 +208,124 @@ class DiscretePredictiveDistribution(PredictiveDistribution):
         q_expanded = q_arr[np.newaxis, :, np.newaxis]
         indices = np.argmax(cdf_expanded >= q_expanded, axis=2)
         return self.classes[indices]
+
+
+class ContinuousPredictiveDistribution(PredictiveDistribution):
+    """Encapsulates a continuous predictive Cumulative Distribution Function (CDF).
+
+    Provides vectorized utilities for computing expected continuous values,
+    medians, percent point functions (quantiles/PPF), central prediction
+    intervals, and continuous CDF probabilities across samples.
+
+    Parameters
+    ----------
+    grid_y : np.ndarray
+        1D float array of shape (n_grid_points,) representing continuous physical
+        target grid values in strictly ascending order.
+    grid_cdf : np.ndarray
+        2D float array of shape (n_samples, n_grid_points) containing evaluated
+        cumulative probabilities across grid points.
+
+    Attributes
+    ----------
+    grid_y : np.ndarray
+        1D float array containing grid values.
+    grid_cdf : np.ndarray
+        2D float array containing cumulative probabilities bounded in [0.0, 1.0].
+
+    Methods
+    -------
+    mean()
+        Calculate expected continuous values via numerical integration.
+    ppf(q)
+        Calculate percent point function (inverse CDF / quantiles).
+    cdf(y)
+        Evaluate continuous CDF probability P(Y <= y) at physical value y.
+
+    Raises
+    ------
+    ValueError
+        If `grid_y` is not 1D, `grid_cdf` is not 2D, or shape dimensions mismatch.
+
+    """
+
+    def __init__(self, grid_y: np.ndarray, grid_cdf: np.ndarray) -> None:
+        y_arr = np.asarray(grid_y, dtype=float)
+        cdf_arr = np.asarray(grid_cdf, dtype=float)
+
+        if y_arr.ndim != 1 or cdf_arr.ndim != 2:
+            raise ValueError("Invalid array dimensions for grid_y or grid_cdf.")
+        if cdf_arr.shape[1] != y_arr.shape[0]:
+            raise ValueError("Grid CDF column dimension must match grid_y length.")
+
+        self.grid_y = y_arr
+        self.grid_cdf = np.clip(cdf_arr, 0.0, 1.0)
+        self._n_samples = cdf_arr.shape[0]
+
+    def mean(self) -> np.ndarray:
+        """Calculate expected continuous values via numerical integration.
+
+        Returns
+        -------
+        np.ndarray
+            1D array of shape (n_samples,) containing expected physical values.
+
+        """
+        dy = np.diff(self.grid_y)
+        avg_prob = 1.0 - 0.5 * (self.grid_cdf[:, :-1] + self.grid_cdf[:, 1:])
+        return np.sum(avg_prob * dy, axis=1) + self.grid_y[0]
+
+    def ppf(self, q: Union[float, np.ndarray]) -> np.ndarray:
+        """Calculate continuous interpolated values at quantile level `q`.
+
+        Parameters
+        ----------
+        q : float | np.ndarray
+            Quantile level(s) strictly in the range [0.0, 1.0].
+
+        Returns
+        -------
+        np.ndarray
+            If `q` is a scalar, returns a 1D array of shape (n_samples,).
+            If `q` is a 1D array of length `n_quantiles`, returns a 2D array
+            of shape (n_samples, n_quantiles).
+
+        Raises
+        ------
+        ValueError
+            If any quantile in `q` lies outside [0.0, 1.0].
+
+        """
+        q_arr = np.asarray(q, dtype=float)
+        if np.any((q_arr < 0.0) | (q_arr > 1.0)):
+            raise ValueError("All quantiles in 'q' must lie within [0.0, 1.0].")
+
+        if q_arr.ndim == 0:
+            result = np.empty(self._n_samples, dtype=float)
+            for i in range(self._n_samples):
+                result[i] = np.interp(q_arr, self.grid_cdf[i], self.grid_y)
+            return result
+
+        result = np.empty((self._n_samples, len(q_arr)), dtype=float)
+        for i in range(self._n_samples):
+            result[i] = np.interp(q_arr, self.grid_cdf[i], self.grid_y)
+        return result
+
+    def cdf(self, y: float) -> np.ndarray:
+        """Evaluate continuous CDF probability P(Y <= y) at physical value y.
+
+        Parameters
+        ----------
+        y : float
+            Physical target value at which to evaluate cumulative probability.
+
+        Returns
+        -------
+        np.ndarray
+            1D array of shape (n_samples,) containing evaluated probabilities.
+
+        """
+        probs = np.empty(self._n_samples, dtype=float)
+        for i in range(self._n_samples):
+            probs[i] = np.interp(y, self.grid_y, self.grid_cdf[i])
+        return probs
