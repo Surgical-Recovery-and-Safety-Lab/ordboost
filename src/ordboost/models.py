@@ -527,7 +527,7 @@ class OrdBoostRegressor(BaseEstimator, RegressorMixin):
             Fitted estimator instance.
 
         """
-        X_arr, y_arr = check_X_y(X, y, ensure_2d=True, dtype=float)
+        X_arr, y_arr = check_X_y(X, y, ensure_2d=True, dtype="numeric")
         self.n_features_in_ = X_arr.shape[1]
 
         self.bin_edges_ = self._compute_bin_edges(y_arr)
@@ -551,7 +551,11 @@ class OrdBoostRegressor(BaseEstimator, RegressorMixin):
         if self.mapper is None:
             self.mapper_ = EmpiricalMedianBinMapper(bin_edges=self.bin_edges_)
         else:
-            self.mapper_ = clone(self.mapper)
+            if not isinstance(self.mapper, BaseBinMapper):
+                raise ValueError(
+                    "Expected 'mapper' to be an instance of BaseBinMapper."
+                )
+            self.mapper_ = cast(BaseBinMapper, clone(self.mapper))
             self.mapper_.bin_edges = self.bin_edges_
 
         self.mapper_.fit(y_continuous=y_arr, y_binned=y_binned)
