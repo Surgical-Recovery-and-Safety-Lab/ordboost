@@ -9,7 +9,7 @@ from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.exceptions import NotFittedError
 from sklearn.utils.validation import check_array, check_is_fitted, check_X_y
 
-from ordboost.distributions import PredictiveDistribution
+from ordboost.distributions import DiscretePredictiveDistribution
 
 
 class OrdBoostClassifier(BaseEstimator, ClassifierMixin):
@@ -59,7 +59,7 @@ class OrdBoostClassifier(BaseEstimator, ClassifierMixin):
     predict_proba(X)
         Predict class probability mass functions (PMF) for X.
     predict_dist(X)
-        Predict probability mass distributions wrapped in a `PredictiveDistribution`.
+        Predict probability mass distributions wrapped in a `DiscretePredictiveDistribution`.
     predict(X)
         Predict point estimates (median or expected value) for X.
 
@@ -318,8 +318,8 @@ class OrdBoostClassifier(BaseEstimator, ClassifierMixin):
 
         return pmf
 
-    def predict_dist(self, X: Any) -> PredictiveDistribution:
-        """Predict probability distribution wrapped in a `PredictiveDistribution`.
+    def predict_dist(self, X: Any) -> DiscretePredictiveDistribution:
+        """Predict probability distribution wrapped in a `DiscretePredictiveDistribution`.
 
         Parameters
         ----------
@@ -328,11 +328,11 @@ class OrdBoostClassifier(BaseEstimator, ClassifierMixin):
 
         Returns
         -------
-        PredictiveDistribution
+        DiscretePredictiveDistribution
             Distribution object encapsulating predicted PMFs and class labels.
         """
         pmf = self.predict_proba(X)
-        return PredictiveDistribution(pmf=pmf, classes=self.classes_)
+        return DiscretePredictiveDistribution(pmf=pmf, classes=self.classes_)
 
     def predict(
         self, X: Any, method: Literal["median", "mean"] = "median"
