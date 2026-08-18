@@ -191,55 +191,121 @@ class TestContinuousPredictiveDistribution:
     def test_mean(self, sample_distribution: ContinuousPredictiveDistribution) -> None:
         """Test expected value calculation via trapezoidal integration."""
         means = sample_distribution.mean()
-        # Hand calculation:
-        # Sample 0: dy = [10, 10, 10]
-        # avg_prob = [0.8, 0.4, 0.1] -> sum = 8 + 4 + 1 = 13.0
-        # Sample 1: dy = [10, 10, 10]
-        # avg_prob = [0.95, 0.5, 0.05] -> sum = 9.5 + 5.0 + 0.5 = 15.0
         expected_means = np.array([13.0, 15.0])
         np.testing.assert_allclose(means, expected_means, atol=1e-6)
 
-    def test_ppf_scalar_and_array(
+    # -------------------------------------------------------------------------
+    # CDF Tests
+    # -------------------------------------------------------------------------
+
+    def test_cdf_scalar_evaluation(
         self, sample_distribution: ContinuousPredictiveDistribution
     ) -> None:
-        """Test percent point function for scalar and array inputs."""
-        # Scalar q
+        """Test scalar CDF evaluation across all samples."""
+        # Exact grid lookup (y = 10.0)
+        probs_10 = sample_distribution.cdf(10.0)
+        assert probs_10.shape == (2,)
+        np.testing.assert_allclose(probs_10, np.array([0.4, 0.1]), atol=1e-6)
+
+        # Inner linear interpolation (y = 15.0)
+        # Sample 0: interp between (10, 0.4) and (20, 0.8) -> 0.6
+        # Sample 1: interp between (10, 0.1) and (20, 0.9) -> 0.5
+        probs_15 = sample_distribution.cdf(15.0)
+        np.testing.assert_allclose(probs_15, np.array([0.6, 0.5]), atol=1e-6)
+
+        # Extrapolation below min bound (y = -5.0)
+        np.testing.assert_allclose(sample_distribution.cdf(-5.0), [0.0, 0.0])
+
+        # Extrapolation above max bound (y = 35.0)
+        np.testing.assert_allclose(sample_distribution.cdf(35.0), [1.0, 1.0])
+
+    def test_cdf_vectorized_evaluation(
+        self, sample_distribution: ContinuousPredictiveDistribution
+    ) -> None:
+        """Test 1D array CDF evaluation sample-wise (y_i for sample i)."""
+        # Sample 0 at y_0 = 10.0 -> P(Y_0 <= 10.0) = 0.4
+        # Sample 1 at y_1 = 15.0 -> P(Y_1 <= 15.0) = 0.5
+        y_targets = np.array([10.0, 15.0])
+        probs = sample_distribution.cdf(y_targets)
+
+        assert probs.shape == (2,)
+        np.testing.assert_allclose(probs, np.array([0.4, 0.5]), atol=1e-6)
+
+        # Vectorized extrapolation handling
+        extrap_targets = np.array([-5.0, 35.0])
+        np.testing.assert_allclose(sample_distribution.cdf(extrap_targets), [0.0, 1.0])
+
+    def test_cdf_invalid_inputs(
+        self, sample_distribution: ContinuousPredictiveDistribution
+    ) -> None:
+        """Test that invalid y dimensions or length mismatches raise ValueError."""
+        # Length mismatch for 1D array (expected 2 samples, got 3)
+        with pytest.raises(
+            ValueError, match="Expected 1D 'y' array of length 2, got 3"
+        ):
+            sample_distribution.cdf(np.array([10.0, 15.0, 20.0]))
+
+        # 2D array input
+        with pytest.raises(
+            ValueError, match="Parameter 'y' must be a scalar float or a 1D array"
+        ):
+            sample_distribution.cdf(np.array([[10.0, 15.0], [10.0, 15.0]]))
+
+    # -------------------------------------------------------------------------
+    # PPF Tests
+    # -------------------------------------------------------------------------
+
+    def test_ppf_scalar_evaluation(
+        self, sample_distribution: ContinuousPredictiveDistribution
+    ) -> None:
+        """Test scalar quantile evaluation across all samples."""
+        # Exact grid lookup (q = 0.4)
+        # Sample 0: reaches 0.4 exactly at grid_y = 10.0
+        # Sample 1: interp between (0.1, y=10) and (0.9, y=20) -> 13.75
         p40 = sample_distribution.ppf(0.4)
-        # Sample 0: CDF reaches 0.4 exactly at grid_y=10.0
-        # Sample 1: linear interp between (10, 0.1) and (20, 0.9) -> 13.75
+        assert p40.shape == (2,)
         np.testing.assert_allclose(p40, np.array([10.0, 13.75]), atol=1e-6)
 
-        # Array q
-        quantiles = np.array([0.0, 0.5, 1.0])
-        results = sample_distribution.ppf(quantiles)
-        assert results.shape == (2, 3)
-        # Min and max quantiles match lower and upper grid bounds
-        np.testing.assert_allclose(results[:, 0], [0.0, 0.0])
-        np.testing.assert_allclose(results[:, 2], [30.0, 30.0])
+        # Boundary quantiles
+        np.testing.assert_allclose(sample_distribution.ppf(0.0), [0.0, 0.0])
+        np.testing.assert_allclose(sample_distribution.ppf(1.0), [30.0, 30.0])
 
-    def test_ppf_invalid_quantiles(
+    def test_ppf_array_evaluation(
         self, sample_distribution: ContinuousPredictiveDistribution
     ) -> None:
-        """Test that quantiles outside [0, 1] raise ValueError."""
+        """Test 1D quantile array evaluation returning (n_samples, n_quantiles)."""
+        quantiles = np.array([0.0, 0.4, 1.0])
+        results = sample_distribution.ppf(quantiles)
+
+        assert results.shape == (2, 3)
+        expected = np.array(
+            [
+                [0.0, 10.0, 30.0],
+                [0.0, 13.75, 30.0],
+            ]
+        )
+        np.testing.assert_allclose(results, expected, atol=1e-6)
+
+    def test_ppf_invalid_inputs(
+        self, sample_distribution: ContinuousPredictiveDistribution
+    ) -> None:
+        """Test that invalid quantiles or shapes raise ValueError."""
+        # Quantiles out of [0, 1] range
         with pytest.raises(ValueError, match="within \\[0.0, 1.0\\]"):
             sample_distribution.ppf(-0.01)
 
         with pytest.raises(ValueError, match="within \\[0.0, 1.0\\]"):
             sample_distribution.ppf(1.01)
 
-    def test_cdf_evaluation(
-        self, sample_distribution: ContinuousPredictiveDistribution
-    ) -> None:
-        """Test continuous CDF evaluation at exact grid points and interpolated values."""
-        # Exact grid value
-        probs_10 = sample_distribution.cdf(10.0)
-        np.testing.assert_allclose(probs_10, np.array([0.4, 0.1]), atol=1e-6)
+        # 2D array input
+        with pytest.raises(
+            ValueError, match="Quantile 'q' must be a scalar float or a 1D array"
+        ):
+            sample_distribution.ppf(np.array([[0.1, 0.5], [0.1, 0.5]]))
 
-        # Interpolated value (y = 15.0)
-        # Sample 0: linear interp between (10, 0.4) and (20, 0.8) -> 0.6
-        # Sample 1: linear interp between (10, 0.1) and (20, 0.9) -> 0.5
-        probs_15 = sample_distribution.cdf(15.0)
-        np.testing.assert_allclose(probs_15, np.array([0.6, 0.5]), atol=1e-6)
+    # -------------------------------------------------------------------------
+    # Inherited Utility Methods Tests
+    # -------------------------------------------------------------------------
 
     def test_median(
         self, sample_distribution: ContinuousPredictiveDistribution
