@@ -1,14 +1,46 @@
-"""OrdBoost: Non-parametric discrete ordinal gradient boosting."""
+"""OrdBoost: Non-parametric discrete ordinal-binning gradient boosting and continuous regression."""
 
-from ordboost.distributions import PredictiveDistribution
-from ordboost.metrics import crps_score, pinball_loss
-from ordboost.models import OrdBoostClassifier
+from ordboost.distributions import (
+    ContinuousPredictiveDistribution,
+    DiscretePredictiveDistribution,
+    PredictiveDistribution,
+)
+from ordboost.mappers import (
+    BaseBinMapper,
+    ContinuousBinMapper,
+    EmpiricalMeanBinMapper,
+    EmpiricalMedianBinMapper,
+    QuantileBinMapper,
+    UniformBinMapper,
+)
+from ordboost.metrics import (
+    crps_score,
+    interval_coverage_rate,
+    pinball_loss,
+    winkler_score,
+)
+from ordboost.models import OrdBoostClassifier, OrdBoostRegressor
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
+    # Models
     "OrdBoostClassifier",
+    "OrdBoostRegressor",
+    # Mappers
+    "BaseBinMapper",
+    "ContinuousBinMapper",
+    "EmpiricalMeanBinMapper",
+    "EmpiricalMedianBinMapper",
+    "QuantileBinMapper",
+    "UniformBinMapper",
+    # Distributions
     "PredictiveDistribution",
+    "DiscretePredictiveDistribution",
+    "ContinuousPredictiveDistribution",
+    # Metrics
     "crps_score",
+    "interval_coverage_rate",
     "pinball_loss",
+    "winkler_score",
 ]

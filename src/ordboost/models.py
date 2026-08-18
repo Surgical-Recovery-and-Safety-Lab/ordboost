@@ -1,15 +1,20 @@
 """Ordinal Gradient Boosting Classifier compatible with scikit-learn."""
 
-from typing import Any, Literal, cast
+from typing import Any, Literal, Union, cast
 
 import numpy as np
 from joblib import Parallel, delayed
-from sklearn.base import BaseEstimator, ClassifierMixin, clone
+from numpy.typing import ArrayLike
+from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin, clone
 from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.exceptions import NotFittedError
 from sklearn.utils.validation import check_array, check_is_fitted, check_X_y
 
-from ordboost.distributions import PredictiveDistribution
+from ordboost.distributions import (
+    ContinuousPredictiveDistribution,
+    DiscretePredictiveDistribution,
+)
+from ordboost.mappers import BaseBinMapper
 
 
 class OrdBoostClassifier(BaseEstimator, ClassifierMixin):
@@ -50,16 +55,16 @@ class OrdBoostClassifier(BaseEstimator, ClassifierMixin):
 
     Methods
     -------
-    get_param(deep)
+    get_params(deep)
         Get parameters for this estimator, including dynamically passed kwargs.
-    set_param(**param)
+    set_params(**param)
         Set the parameters of this estimator.
     fit(X, y)
         Fit the ordinal gradient boosting model.
     predict_proba(X)
         Predict class probability mass functions (PMF) for X.
     predict_dist(X)
-        Predict probability mass distributions wrapped in a `PredictiveDistribution`.
+        Predict probability mass distributions wrapped in a `DiscretePredictiveDistribution`.
     predict(X)
         Predict point estimates (median or expected value) for X.
 
@@ -179,7 +184,7 @@ class OrdBoostClassifier(BaseEstimator, ClassifierMixin):
         estimator.fit(X, y_binary)
         return estimator
 
-    def fit(self, X: Any, y: Any) -> "OrdBoostClassifier":
+    def fit(self, X: ArrayLike, y: ArrayLike) -> "OrdBoostClassifier":
         """Fit the ordinal gradient boosting model on training data.
 
         Parameters
@@ -318,8 +323,8 @@ class OrdBoostClassifier(BaseEstimator, ClassifierMixin):
 
         return pmf
 
-    def predict_dist(self, X: Any) -> PredictiveDistribution:
-        """Predict probability distribution wrapped in a `PredictiveDistribution`.
+    def predict_dist(self, X: ArrayLike) -> DiscretePredictiveDistribution:
+        """Predict probability distribution wrapped in a `DiscretePredictiveDistribution`.
 
         Parameters
         ----------
@@ -328,14 +333,14 @@ class OrdBoostClassifier(BaseEstimator, ClassifierMixin):
 
         Returns
         -------
-        PredictiveDistribution
+        DiscretePredictiveDistribution
             Distribution object encapsulating predicted PMFs and class labels.
         """
         pmf = self.predict_proba(X)
-        return PredictiveDistribution(pmf=pmf, classes=self.classes_)
+        return DiscretePredictiveDistribution(pmf=pmf, classes=self.classes_)
 
     def predict(
-        self, X: Any, method: Literal["median", "mean"] = "median"
+        self, X: ArrayLike, method: Literal["median", "mean"] = "median"
     ) -> np.ndarray:
         """Predict target class point estimates for X.
 
@@ -363,3 +368,365 @@ class OrdBoostClassifier(BaseEstimator, ClassifierMixin):
             raise ValueError(
                 f"Invalid prediction method '{method}'. Must be 'median' or 'mean'."
             )
+
+
+class OrdBoostRegressor(BaseEstimator, RegressorMixin):
+    """Ordinal Gradient Boosting Regressor for continuous target outcomes.
+
+    Discretizes continuous targets into ordinal bins, fits an underlying cumulative
+    binary OrdBoostClassifier, and maps predicted probability distributions back
+    to continuous target space using a fitted bin mapper.
+
+    Parameters
+    ----------
+    n_bins : int, default=20
+        Number of discrete bins to construct if `bin_edges` is None.
+    bin_edges : ArrayLike of shape (n_bins + 1,), optional
+        Monotonically increasing boundaries defining continuous bin intervals.
+    bin_strategy : {"quantile", "uniform"}, default="quantile"
+        Strategy used to define automatic bin boundaries when `bin_edges` is None.
+    mapper : {"median", "mean", "quantile", "uniform", "continuous"} or BaseBinMapper, default="median"
+        Bin mapping strategy instance or string shortcut used to convert predicted
+        PMFs back to continuous predictions.
+    mapper_kwargs : dict[str, Any] | None, default=None
+        Optional keyword arguments passed when instantiating string-shortcut
+        mappers.
+    learning_rate : float, default=0.1
+        Learning rate for gradient boosting.
+    max_iter : int, default=100
+        Maximum number of iterations (trees) per cumulative edge model.
+    max_depth : int | None, default=None
+        Maximum depth of each tree.
+    min_samples_leaf : int, default=20
+        Minimum number of samples per leaf.
+    l2_regularization : float, default=0.0
+        L2 regularization parameter.
+    monotonicity : {"running_max", "isotonic"}, default="running_max"
+        Cumulative probability monotonicity enforcement method.
+    n_jobs : int, default=-1
+        Number of parallel jobs to run when fitting edge classifiers.
+    random_state : int | None, default=None
+        Random state seed.
+    **kwargs : dict[str, Any]
+        Additional arguments passed to underlying `HistGradientBoostingClassifier`.
+
+    Attributes
+    ----------
+    bin_edges_ : np.ndarray
+        1D float array of shape (n_bins + 1,) containing resolved bin edges.
+    classifier_ : OrdBoostClassifier
+        Fitted underlying ordinal gradient boosting classifier.
+    mapper_ : BaseBinMapper
+        Fitted bin mapper instance.
+    n_features_in_ : int
+        Number of features seen during `fit`.
+
+    Methods
+    -------
+    get_params(deep)
+        Get parameters for this estimator, including dynamically passed kwargs.
+    set_params(**param)
+        Set the parameters of this estimator.
+    fit(X, y)
+        Fit the continuous ordinal gradient boosting regressor.
+    predict_dist(X)
+        Predict continuous cumulative distribution functions wrapped in a distribution.
+    predict(X, method="mean")
+        Predict continuous target point estimates.
+
+    """
+
+    def __init__(
+        self,
+        n_bins: int = 20,
+        bin_edges: Union[ArrayLike, None] = None,
+        bin_strategy: Literal["quantile", "uniform"] = "quantile",
+        mapper: Union[
+            Literal["median", "mean", "quantile", "uniform", "continuous"],
+            BaseBinMapper,
+            None,
+        ] = "median",
+        mapper_kwargs: Union[dict[str, Any], None] = None,
+        learning_rate: float = 0.1,
+        max_iter: int = 100,
+        max_depth: Union[int, None] = None,
+        min_samples_leaf: int = 20,
+        l2_regularization: float = 0.0,
+        monotonicity: Literal["running_max", "isotonic"] = "running_max",
+        n_jobs: int = -1,
+        random_state: Union[int, None] = None,
+        **kwargs: Any,
+    ) -> None:
+        self.n_bins = n_bins
+        self.bin_edges = bin_edges
+        self.bin_strategy = bin_strategy
+        self.mapper = mapper
+        self.mapper_kwargs = mapper_kwargs
+        self.learning_rate = learning_rate
+        self.max_iter = max_iter
+        self.max_depth = max_depth
+        self.min_samples_leaf = min_samples_leaf
+        self.l2_regularization = l2_regularization
+        self.monotonicity: Literal["running_max", "isotonic"] = monotonicity
+        self.n_jobs = n_jobs
+        self.random_state = random_state
+        self.kwargs = kwargs
+
+    def get_params(self, deep: bool = True) -> dict[str, Any]:
+        """Get parameters for this estimator, including dynamically passed kwargs.
+
+        Parameters
+        ----------
+        deep : bool, default=True
+            If True, will return the parameters for this estimator and
+            contained sub-objects that are estimators.
+
+        Returns
+        -------
+        params : dict
+            Parameter names mapped to their values.
+
+        """
+        # Fetch standard explicit parameters from BaseEstimator
+        params = super().get_params(deep=deep)
+
+        # Remove raw 'kwargs' dictionary entry if BaseEstimator captured it
+        params.pop("kwargs", None)
+
+        # Merge extra kwargs directly into top-level parameter dictionary
+        if hasattr(self, "kwargs") and isinstance(self.kwargs, dict):
+            params.update(self.kwargs)
+
+        return params
+
+    def set_params(self, **params: Any) -> "OrdBoostRegressor":
+        """Set the parameters of this estimator.
+
+        Parameters
+        ----------
+        **params : dict
+            Estimator parameters.
+
+        Returns
+        -------
+        self : OrdBoostRegressor
+            Estimator instance.
+
+        """
+        if not params:
+            return self
+
+        # Separate explicit init fields from additional kwargs
+        valid_params = self._get_param_names()
+
+        if not hasattr(self, "kwargs") or self.kwargs is None:
+            self.kwargs = {}
+
+        for key, value in params.items():
+            if key in valid_params:
+                setattr(self, key, value)
+            else:
+                self.kwargs[key] = value
+
+        return self
+
+    def _compute_bin_edges(self, y: np.ndarray) -> np.ndarray:
+        """Compute or validate continuous target bin boundary edges.
+
+        Parameters
+        ----------
+        y : np.ndarray
+            1D float array of continuous target values used to compute automatic
+            bin edges when `bin_edges` is None.
+
+        Returns
+        -------
+        np.ndarray
+            1D float array containing strictly monotonically increasing bin edge
+            thresholds.
+
+        Raises
+        ------
+        ValueError
+            If `bin_edges` is not 1D, has fewer than 2 elements, or is not strictly
+            monotonically increasing.
+            If `n_bins` is less than 2.
+            If `bin_strategy` is invalid.
+
+        """
+        if self.bin_edges is not None:
+            edges = np.asarray(self.bin_edges, dtype=float)
+            if edges.ndim != 1 or len(edges) < 2:
+                raise ValueError(
+                    "Expected 'bin_edges' to be a 1D array with >= 2 edges."
+                )
+            if np.any(np.diff(edges) <= 0.0):
+                raise ValueError(
+                    "'bin_edges' must be strictly monotonically increasing."
+                )
+            return edges
+
+        if self.n_bins < 2:
+            raise ValueError("Parameter 'n_bins' must be >= 2.")
+
+        if self.bin_strategy == "quantile":
+            quantiles = np.linspace(0.0, 1.0, self.n_bins + 1)
+            edges = np.quantile(y, quantiles)
+            # Ensure unique edges if duplicates occur in dense regions
+            edges = np.unique(edges)
+            if len(edges) < 2:
+                edges = np.linspace(np.min(y), np.max(y), self.n_bins + 1)
+        elif self.bin_strategy == "uniform":
+            edges = np.linspace(np.min(y), np.max(y), self.n_bins + 1)
+        else:
+            raise ValueError(f"Invalid bin_strategy '{self.bin_strategy}'.")
+
+        return edges
+
+    def _resolve_mapper(self) -> BaseBinMapper:
+        """Resolve string shortcut or clone provided mapper and assign resolved
+        bin edges.
+
+        Returns
+        -------
+        BaseBinMapper
+            An un-fitted mapper instance configured with `bin_edges_`
+            ready for fitting.
+
+        Raises
+        ------
+        ValueError
+            If `mapper` is an invalid string shortcut or not an instance
+            of `BaseBinMapper`.
+
+        """
+        from ordboost.mappers import (
+            ContinuousBinMapper,
+            EmpiricalMeanBinMapper,
+            EmpiricalMedianBinMapper,
+            QuantileBinMapper,
+            UniformBinMapper,
+        )
+
+        mapper_map: dict[str, type[BaseBinMapper]] = {
+            "median": EmpiricalMedianBinMapper,
+            "mean": EmpiricalMeanBinMapper,
+            "quantile": QuantileBinMapper,
+            "uniform": UniformBinMapper,
+            "continuous": ContinuousBinMapper,
+        }
+
+        extra_kwargs = self.mapper_kwargs or {}
+
+        if self.mapper is None or self.mapper == "median":
+            mapper_obj = EmpiricalMedianBinMapper(
+                bin_edges=self.bin_edges_, **extra_kwargs
+            )
+        elif isinstance(self.mapper, str):
+            if self.mapper not in mapper_map:
+                raise ValueError(
+                    f"Unknown mapper shortcut '{self.mapper}'. "
+                    f"Supported options are: {list(mapper_map.keys())}"
+                )
+            mapper_cls = mapper_map[self.mapper]
+            mapper_obj = mapper_cls(bin_edges=self.bin_edges_, **extra_kwargs)
+        elif isinstance(self.mapper, BaseBinMapper):
+            mapper_obj = cast(BaseBinMapper, clone(self.mapper))
+            mapper_obj.bin_edges = self.bin_edges_
+        else:
+            raise ValueError(
+                "Expected 'mapper' to be a valid string shortcut or an instance "
+                "of BaseBinMapper."
+            )
+
+        return mapper_obj
+
+    def fit(self, X: ArrayLike, y: ArrayLike) -> "OrdBoostRegressor":
+        """Fit the ordinal boosting regressor on continuous targets.
+
+        Discretizes `y` into bins using `bin_edges_`, fits the underlying
+        `OrdBoostClassifier`, and fits the resolved `mapper_` strategy.
+
+        Parameters
+        ----------
+        X : ArrayLike of shape (n_samples, n_features)
+            Training feature matrix.
+        y : ArrayLike of shape (n_samples,)
+            Continuous target vector.
+
+        Returns
+        -------
+        OrdBoostRegressor
+            Fitted estimator instance.
+
+        """
+        X_arr, y_arr = check_X_y(X, y, ensure_2d=True, dtype="numeric")
+        self.n_features_in_ = X_arr.shape[1]
+
+        self.bin_edges_ = self._compute_bin_edges(y_arr)
+        y_binned = np.digitize(y_arr, self.bin_edges_[1:-1])
+
+        # Fit underlying OrdBoostClassifier
+        self.classifier_ = OrdBoostClassifier(
+            learning_rate=self.learning_rate,
+            max_iter=self.max_iter,
+            max_depth=self.max_depth,
+            min_samples_leaf=self.min_samples_leaf,
+            l2_regularization=self.l2_regularization,
+            monotonicity=self.monotonicity,
+            n_jobs=self.n_jobs,
+            random_state=self.random_state,
+            **self.kwargs,
+        )
+        self.classifier_.fit(X_arr, y_binned)
+
+        # Resolve and fit bin mapper
+        self.mapper_ = self._resolve_mapper()
+        self.mapper_.fit(y_continuous=y_arr, y_binned=y_binned)
+
+        return self
+
+    def predict_dist(self, X: ArrayLike) -> ContinuousPredictiveDistribution:
+        """Predict probability distribution wrapped in ContinuousPredictiveDistribution.
+
+        Parameters
+        ----------
+        X : ArrayLike of shape (n_samples, n_features)
+            Input feature matrix.
+
+        Returns
+        -------
+        ContinuousPredictiveDistribution
+            Predicted continuous cumulative distribution object.
+
+        """
+        check_is_fitted(self, attributes=["bin_edges_", "classifier_", "mapper_"])
+        X_arr = check_array(X, ensure_2d=True)
+        pmf = self.classifier_.predict_proba(X_arr)
+        return self.mapper_.to_continuous_dist(pmf)
+
+    def predict(
+        self, X: ArrayLike, method: Literal["mean", "median"] = "mean"
+    ) -> np.ndarray:
+        """Predict continuous target point estimates.
+
+        Parameters
+        ----------
+        X : ArrayLike of shape (n_samples, n_features)
+            Input feature matrix.
+        method : {"mean", "median"}, default="mean"
+            Point prediction calculation method.
+
+        Returns
+        -------
+        np.ndarray
+            1D float array of predicted target values.
+
+        """
+        dist = self.predict_dist(X)
+        if method == "mean":
+            return dist.mean()
+        elif method == "median":
+            return dist.median()
+        else:
+            raise ValueError(f"Invalid method '{method}'. Must be 'mean' or 'median'.")
