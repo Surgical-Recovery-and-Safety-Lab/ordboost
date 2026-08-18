@@ -15,7 +15,7 @@ class BaseBinMapper(ABC, BaseEstimator, TransformerMixin):
 
     Parameters
     ----------
-    bin_edges : array-like of shape (n_bins + 1,)
+    bin_edges : array-like of shape (n_bins + 1,) or None, default=None
         Monotonically increasing boundaries defining continuous bin intervals.
 
     Attributes
@@ -36,7 +36,7 @@ class BaseBinMapper(ABC, BaseEstimator, TransformerMixin):
 
     """
 
-    def __init__(self, bin_edges: ArrayLike) -> None:
+    def __init__(self, bin_edges: Union[ArrayLike, None] = None) -> None:
         self.bin_edges = bin_edges
 
     def _validate_edges(self) -> np.ndarray:
@@ -50,10 +50,14 @@ class BaseBinMapper(ABC, BaseEstimator, TransformerMixin):
         Raises
         ------
         ValueError
-            If `bin_edges` has fewer than 2 edges, is not 1D, or is not
-            strictly monotonically increasing.
+            If `bin_edges` has fewer than 2 edges, is not 1D, is not
+            strictly monotonically increasing or is None.
 
         """
+        if self.bin_edges is None:
+            raise ValueError(
+                "'bin_edges' must be set on the mapper prior to fitting.",
+            )
         edges = np.asarray(self.bin_edges, dtype=float)
         if edges.ndim != 1 or len(edges) < 2:
             raise ValueError(
@@ -131,7 +135,7 @@ class EmpiricalMeanBinMapper(BaseBinMapper):
 
     Parameters
     ----------
-    bin_edges : array-like of shape (n_bins + 1,)
+    bin_edges : array-like of shape (n_bins + 1,) or None, default=None
         Monotonically increasing boundaries defining continuous bin intervals.
 
     Attributes
@@ -155,7 +159,7 @@ class EmpiricalMeanBinMapper(BaseBinMapper):
 
     """
 
-    def __init__(self, bin_edges: ArrayLike) -> None:
+    def __init__(self, bin_edges: Union[ArrayLike, None] = None) -> None:
         super().__init__(bin_edges=bin_edges)
 
     def fit(
@@ -315,7 +319,7 @@ class EmpiricalMedianBinMapper(BaseBinMapper):
 
     Parameters
     ----------
-    bin_edges : ArrayLike of shape (n_bins + 1,)
+    bin_edges : ArrayLike of shape (n_bins + 1,) or None, default=None
         Monotonically increasing boundaries defining continuous bin intervals.
 
     Attributes
@@ -339,7 +343,7 @@ class EmpiricalMedianBinMapper(BaseBinMapper):
 
     """
 
-    def __init__(self, bin_edges: ArrayLike) -> None:
+    def __init__(self, bin_edges: Union[ArrayLike, None] = None) -> None:
         super().__init__(bin_edges=bin_edges)
 
     def fit(
@@ -501,7 +505,7 @@ class QuantileBinMapper(BaseBinMapper):
 
     Parameters
     ----------
-    bin_edges : ArrayLike of shape (n_bins + 1,)
+    bin_edges : ArrayLike of shape (n_bins + 1,) or None, default=None
         Monotonically increasing boundaries defining continuous bin intervals.
     quantiles : ArrayLike of shape (n_quantiles,), default=(0.25, 0.50, 0.75)
         Intra-bin quantile levels strictly in the range (0.0, 1.0) used to
@@ -533,7 +537,7 @@ class QuantileBinMapper(BaseBinMapper):
 
     def __init__(
         self,
-        bin_edges: ArrayLike,
+        bin_edges: Union[ArrayLike, None] = None,
         quantiles: ArrayLike = (0.25, 0.50, 0.75),
     ) -> None:
         super().__init__(bin_edges=bin_edges)
@@ -714,7 +718,7 @@ class UniformBinMapper(BaseBinMapper):
 
     Parameters
     ----------
-    bin_edges : ArrayLike of shape (n_bins + 1,)
+    bin_edges : ArrayLike of shape (n_bins + 1,) or None, default=None
         Monotonically increasing boundaries defining continuous bin intervals.
 
     Attributes
@@ -737,7 +741,7 @@ class UniformBinMapper(BaseBinMapper):
 
     """
 
-    def __init__(self, bin_edges: ArrayLike) -> None:
+    def __init__(self, bin_edges: Union[ArrayLike, None] = None) -> None:
         super().__init__(bin_edges=bin_edges)
 
     def fit(
@@ -862,7 +866,7 @@ class ContinuousBinMapper(BaseBinMapper):
 
     Parameters
     ----------
-    bin_edges : ArrayLike of shape (n_bins + 1,)
+    bin_edges : ArrayLike of shape (n_bins + 1,) or None, default=None
         Monotonically increasing boundaries defining continuous bin intervals.
     grid_resolution : int, default=100
         Number of points in the automatically generated dense target grid if
@@ -901,7 +905,7 @@ class ContinuousBinMapper(BaseBinMapper):
 
     def __init__(
         self,
-        bin_edges: ArrayLike,
+        bin_edges: Union[ArrayLike, None] = None,
         grid_resolution: int = 100,
         grid_y: Union[ArrayLike, None] = None,
         density_weighted: bool = True,
@@ -934,7 +938,8 @@ class ContinuousBinMapper(BaseBinMapper):
         Raises
         ------
         ValueError
-            If `bin_edges` is invalid, `y_continuous` is not 1D, or `grid_y` is invalid.
+            If `bin_edges` is invalid, `y_continuous` is not 1D,
+            or `grid_y` is invalid.
 
         """
         edges = self._validate_edges()
