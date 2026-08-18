@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 from typing import Union
 
 import numpy as np
+from numpy.typing import ArrayLike
 
 
 class PredictiveDistribution(ABC):
@@ -311,21 +312,65 @@ class ContinuousPredictiveDistribution(PredictiveDistribution):
             result[i] = np.interp(q_arr, self.grid_cdf[i], self.grid_y)
         return result
 
-    def cdf(self, y: float) -> np.ndarray:
-        """Evaluate continuous CDF probability P(Y <= y) at physical value y.
+    def cdf(self, y: Union[float, ArrayLike]) -> np.ndarray:
+        """Evaluate continuous CDF probability P(Y <= y) at physical value(s) y.
 
         Parameters
         ----------
-        y : float
-            Physical target value at which to evaluate cumulative probability.
+        y : float | ArrayLike
+            If a scalar float, evaluates P(Y <= y) at y for all samples.
+            If a 1D array of shape (n_samples,), evaluates P(Y_i <= y_i)
+            sample-wise for each corresponding sample i.
 
         Returns
         -------
         np.ndarray
             1D array of shape (n_samples,) containing evaluated probabilities.
 
+        Raises
+        ------
+        ValueError
+            If y is an array and not of shape (n_samples,).
+            If y is not a scalar or a 1D array.
+
         """
-        probs = np.empty(self._n_samples, dtype=float)
-        for i in range(self._n_samples):
-            probs[i] = np.interp(y, self.grid_y, self.grid_cdf[i])
-        return probs
+        y_arr = np.asarray(y, dtype=float)
+        n_grid = len(self.grid_y)
+
+        # 1. Scalar query (same y for all samples)
+        if y_arr.ndim == 0:
+            idx = int(
+                np.clip(
+                    np.searchsorted(self.grid_y, y_arr.item(), side="right") - 1,
+                    0,
+                    n_grid - 2,
+                )
+            )
+            t = np.clip(
+                (y_arr.item() - self.grid_y[idx])
+                / (self.grid_y[idx + 1] - self.grid_y[idx]),
+                0.0,
+                1.0,
+            )
+            return (1.0 - t) * self.grid_cdf[:, idx] + t * self.grid_cdf[:, idx + 1]
+
+        # 2. Vectorized 1D query (sample-wise y_i)
+        if y_arr.ndim == 1:
+            if len(y_arr) != self._n_samples:
+                raise ValueError(
+                    f"Expected 1D 'y' array of length {self._n_samples}, "
+                    f"got {len(y_arr)}."
+                )
+            idx = np.clip(
+                np.searchsorted(self.grid_y, y_arr, side="right") - 1,
+                0,
+                n_grid - 2,
+            )
+            y0, y1 = self.grid_y[idx], self.grid_y[idx + 1]
+            t = np.clip((y_arr - y0) / (y1 - y0), 0.0, 1.0)
+            rows = np.arange(self._n_samples)
+            return (1.0 - t) * self.grid_cdf[rows, idx] + t * self.grid_cdf[
+                rows, idx + 1
+            ]
+
+        raise ValueError("Parameter 'y' must be a scalar float or a 1D array.")
