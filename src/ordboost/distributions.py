@@ -276,12 +276,12 @@ class ContinuousPredictiveDistribution(PredictiveDistribution):
         avg_prob = 1.0 - 0.5 * (self.grid_cdf[:, :-1] + self.grid_cdf[:, 1:])
         return np.sum(avg_prob * dy, axis=1) + self.grid_y[0]
 
-    def ppf(self, q: Union[float, np.ndarray]) -> np.ndarray:
+    def ppf(self, q: Union[float, ArrayLike]) -> np.ndarray:
         """Calculate continuous interpolated values at quantile level `q`.
 
         Parameters
         ----------
-        q : float | np.ndarray
+        q : float | ArrayLike
             Quantile level(s) strictly in the range [0.0, 1.0].
 
         Returns
@@ -295,22 +295,44 @@ class ContinuousPredictiveDistribution(PredictiveDistribution):
         ------
         ValueError
             If any quantile in `q` lies outside [0.0, 1.0].
+            If `q` is not a 1D array or a float.
 
         """
         q_arr = np.asarray(q, dtype=float)
         if np.any((q_arr < 0.0) | (q_arr > 1.0)):
             raise ValueError("All quantiles in 'q' must lie within [0.0, 1.0].")
 
-        if q_arr.ndim == 0:
-            result = np.empty(self._n_samples, dtype=float)
-            for i in range(self._n_samples):
-                result[i] = np.interp(q_arr, self.grid_cdf[i], self.grid_y)
-            return result
+        n_samples, n_grid = self.grid_cdf.shape
 
-        result = np.empty((self._n_samples, len(q_arr)), dtype=float)
-        for i in range(self._n_samples):
-            result[i] = np.interp(q_arr, self.grid_cdf[i], self.grid_y)
-        return result
+        # 1. Scalar quantile query -> returns shape (n_samples,)
+        if q_arr.ndim == 0:
+            q_val = q_arr.item()
+            idx = np.clip(
+                np.count_nonzero(self.grid_cdf <= q_val, axis=1) - 1,
+                0,
+                n_grid - 2,
+            )
+            rows = np.arange(n_samples)
+            q0, q1 = self.grid_cdf[rows, idx], self.grid_cdf[rows, idx + 1]
+            t = np.clip((q_val - q0) / (q1 - q0), 0.0, 1.0)
+            return (1.0 - t) * self.grid_y[idx] + t * self.grid_y[idx + 1]
+
+        # 2. Array quantile query -> returns shape (n_samples, n_quantiles)
+        if q_arr.ndim == 1:
+            grid_cdf_ = self.grid_cdf[:, np.newaxis, :]
+            grid_q_arr = q_arr[np.newaxis, :, np.newaxis]
+
+            idx = np.clip(
+                np.count_nonzero(grid_cdf_ <= grid_q_arr, axis=2) - 1,
+                0,
+                n_grid - 2,
+            )
+            q0 = np.take_along_axis(self.grid_cdf, idx, axis=1)
+            q1 = np.take_along_axis(self.grid_cdf, idx + 1, axis=1)
+            t = np.clip((q_arr[np.newaxis, :] - q0) / (q1 - q0), 0.0, 1.0)
+            return (1.0 - t) * self.grid_y[idx] + t * self.grid_y[idx + 1]
+
+        raise ValueError("Quantile 'q' must be a scalar float or a 1D array.")
 
     def cdf(self, y: Union[float, ArrayLike]) -> np.ndarray:
         """Evaluate continuous CDF probability P(Y <= y) at physical value(s) y.
