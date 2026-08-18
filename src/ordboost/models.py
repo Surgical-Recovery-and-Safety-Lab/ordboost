@@ -385,8 +385,12 @@ class OrdBoostRegressor(BaseEstimator, RegressorMixin):
         Monotonically increasing boundaries defining continuous bin intervals.
     bin_strategy : {"quantile", "uniform"}, default="quantile"
         Strategy used to define automatic bin boundaries when `bin_edges` is None.
-    mapper : BaseBinMapper, optional
-        Bin mapping strategy instance. Defaults to `EmpiricalMedianBinMapper`.
+    mapper : {"median", "mean", "quantile", "uniform", "continuous"} or BaseBinMapper, default="median"
+        Bin mapping strategy instance or string shortcut used to convert predicted
+        PMFs back to continuous predictions.
+    mapper_kwargs : dict[str, Any] | None, default=None
+        Optional keyword arguments passed when instantiating string-shortcut
+        mappers.
     learning_rate : float, default=0.1
         Learning rate for gradient boosting.
     max_iter : int, default=100
@@ -433,7 +437,12 @@ class OrdBoostRegressor(BaseEstimator, RegressorMixin):
         n_bins: int = 20,
         bin_edges: Union[ArrayLike, None] = None,
         bin_strategy: Literal["quantile", "uniform"] = "quantile",
-        mapper: Union[BaseBinMapper, None] = None,
+        mapper: Union[
+            Literal["median", "mean", "quantile", "uniform", "continuous"],
+            BaseBinMapper,
+            None,
+        ] = "median",
+        mapper_kwargs: Union[dict[str, Any], None] = None,
         learning_rate: float = 0.1,
         max_iter: int = 100,
         max_depth: Union[int, None] = None,
@@ -448,6 +457,7 @@ class OrdBoostRegressor(BaseEstimator, RegressorMixin):
         self.bin_edges = bin_edges
         self.bin_strategy = bin_strategy
         self.mapper = mapper
+        self.mapper_kwargs = mapper_kwargs
         self.learning_rate = learning_rate
         self.max_iter = max_iter
         self.max_depth = max_depth
@@ -510,6 +520,64 @@ class OrdBoostRegressor(BaseEstimator, RegressorMixin):
             raise ValueError(f"Invalid bin_strategy '{self.bin_strategy}'.")
 
         return edges
+
+    def _resolve_mapper(self) -> BaseBinMapper:
+        """Resolve string shortcut or clone provided mapper and assign resolved
+        bin edges.
+
+        Returns
+        -------
+        BaseBinMapper
+            An un-fitted mapper instance configured with `bin_edges_`
+            ready for fitting.
+
+        Raises
+        ------
+        ValueError
+            If `mapper` is an invalid string shortcut or not an instance
+            of `BaseBinMapper`.
+
+        """
+        from ordboost.mappers import (
+            ContinuousBinMapper,
+            EmpiricalMeanBinMapper,
+            EmpiricalMedianBinMapper,
+            QuantileBinMapper,
+            UniformBinMapper,
+        )
+
+        mapper_map: dict[str, type[BaseBinMapper]] = {
+            "median": EmpiricalMedianBinMapper,
+            "mean": EmpiricalMeanBinMapper,
+            "quantile": QuantileBinMapper,
+            "uniform": UniformBinMapper,
+            "continuous": ContinuousBinMapper,
+        }
+
+        extra_kwargs = self.mapper_kwargs or {}
+
+        if self.mapper is None or self.mapper == "median":
+            mapper_obj = EmpiricalMedianBinMapper(
+                bin_edges=self.bin_edges_, **extra_kwargs
+            )
+        elif isinstance(self.mapper, str):
+            if self.mapper not in mapper_map:
+                raise ValueError(
+                    f"Unknown mapper shortcut '{self.mapper}'. "
+                    f"Supported options are: {list(mapper_map.keys())}"
+                )
+            mapper_cls = mapper_map[self.mapper]
+            mapper_obj = mapper_cls(bin_edges=self.bin_edges_, **extra_kwargs)
+        elif isinstance(self.mapper, BaseBinMapper):
+            mapper_obj = cast(BaseBinMapper, clone(self.mapper))
+            mapper_obj.bin_edges = self.bin_edges_
+        else:
+            raise ValueError(
+                "Expected 'mapper' to be a valid string shortcut or an instance "
+                "of BaseBinMapper."
+            )
+
+        return mapper_obj
 
     def fit(self, X: ArrayLike, y: ArrayLike) -> "OrdBoostRegressor":
         """Fit the ordinal boosting regressor on continuous targets.
