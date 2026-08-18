@@ -8,6 +8,7 @@ from sklearn.exceptions import NotFittedError
 from ordboost.distributions import ContinuousPredictiveDistribution
 from ordboost.mappers import (
     BaseBinMapper,
+    ContinuousBinMapper,
     EmpiricalMeanBinMapper,
     EmpiricalMedianBinMapper,
     QuantileBinMapper,
@@ -684,3 +685,156 @@ class TestUniformBinMapperToContinuousDist:
         mapper = UniformBinMapper(bin_edges=[0, 10, 20]).fit()
         with pytest.raises(ValueError, match="PMF column dimension"):
             mapper.to_continuous_dist([[0.3, 0.3, 0.4]])
+
+
+class TestContinuousBinMapper:
+    """Unit test suite for ContinuousBinMapper."""
+
+    def test_fit_and_attributes_default_grid(self) -> None:
+        """Test default grid creation and attribute initialization during fit."""
+        bin_edges = [0.0, 10.0, 20.0]
+        y_cont = np.array([2.0, 5.0, 8.0, 12.0, 18.0])
+
+        mapper = ContinuousBinMapper(bin_edges=bin_edges, grid_resolution=21)
+        mapper.fit(y_cont)
+
+        assert mapper.n_bins_ == 2
+        assert len(mapper.grid_y_) == 21
+        assert mapper.grid_y_[0] == 0.0
+        assert mapper.grid_y_[-1] == 20.0
+        assert len(mapper.bin_indices_) == 21
+        assert len(mapper.intra_bin_cdf_) == 21
+
+    def test_fit_custom_grid_y(self) -> None:
+        """Test fit behavior with a custom explicit target grid."""
+        bin_edges = [0.0, 10.0, 20.0]
+        custom_grid = np.linspace(0.0, 20.0, 41)
+        y_cont = np.array([5.0, 15.0])
+
+        mapper = ContinuousBinMapper(bin_edges=bin_edges, grid_y=custom_grid)
+        mapper.fit(y_cont)
+
+        np.testing.assert_array_equal(mapper.grid_y_, custom_grid)
+        assert len(mapper.bin_indices_) == 41
+
+    def test_density_weighted_true_empirical_cdf(self) -> None:
+        """Test that density_weighted=True accurately computes training empirical CDF inside bins."""
+        bin_edges = [0.0, 10.0]
+        # In bin 0, train targets are [2.0, 2.0, 8.0]
+        y_cont = np.array([2.0, 2.0, 8.0])
+        grid_y = np.array([0.0, 2.0, 5.0, 8.0, 10.0])
+
+        mapper = ContinuousBinMapper(
+            bin_edges=bin_edges, grid_y=grid_y, density_weighted=True
+        )
+        mapper.fit(y_cont)
+
+        # Empirical CDF for [2.0, 2.0, 8.0]:
+        # y=0: 0/3 = 0.0
+        # y=2: 2/3 ≈ 0.6667
+        # y=5: 2/3 ≈ 0.6667
+        # y=8: 3/3 = 1.0
+        # y=10: 3/3 = 1.0
+        expected_cdf = np.array([0.0, 2.0 / 3.0, 2.0 / 3.0, 1.0, 1.0])
+        np.testing.assert_allclose(mapper.intra_bin_cdf_, expected_cdf)
+
+    def test_density_weighted_false_uniform_interpolation(self) -> None:
+        """Test that density_weighted=False applies uniform linear intra-bin interpolation."""
+        bin_edges = [0.0, 10.0]
+        grid_y = np.array([0.0, 2.5, 5.0, 7.5, 10.0])
+        y_cont = np.array([1.0, 9.0])
+
+        mapper = ContinuousBinMapper(
+            bin_edges=bin_edges, grid_y=grid_y, density_weighted=False
+        )
+        mapper.fit(y_cont)
+
+        # Uniform interpolation: (y - 0) / (10 - 0)
+        expected_cdf = np.array([0.0, 0.25, 0.5, 0.75, 1.0])
+        np.testing.assert_allclose(mapper.intra_bin_cdf_, expected_cdf)
+
+    def test_to_continuous_dist_and_transform(self) -> None:
+        """Test converting predicted PMF matrix to ContinuousPredictiveDistribution and mean transform."""
+        bin_edges = [0.0, 10.0, 20.0]
+        grid_y = np.array([0.0, 10.0, 20.0])
+        y_cont = np.array([5.0, 15.0])
+
+        mapper = ContinuousBinMapper(
+            bin_edges=bin_edges, grid_y=grid_y, density_weighted=False
+        )
+        mapper.fit(y_cont)
+
+        pmf = np.array([[0.6, 0.4], [0.2, 0.8]])
+        dist = mapper.to_continuous_dist(pmf)
+
+        assert isinstance(dist, ContinuousPredictiveDistribution)
+        assert dist.grid_cdf.shape == (2, 3)
+
+        # Expected CDFs at boundary points [0, 10, 20]:
+        # Sample 0: bin 0 prob = 0.6, bin 1 prob = 0.4 -> CDF = [0.0, 0.6, 1.0]
+        # Sample 1: bin 0 prob = 0.2, bin 1 prob = 0.8 -> CDF = [0.0, 0.2, 1.0]
+        np.testing.assert_allclose(dist.grid_cdf[0], [0.0, 0.6, 1.0])
+        np.testing.assert_allclose(dist.grid_cdf[1], [0.0, 0.2, 1.0])
+
+        # Verify transform() matches dist.mean()
+        transformed_means = mapper.transform(pmf)
+        np.testing.assert_allclose(transformed_means, dist.mean())
+
+    def test_explicit_y_binned_argument(self) -> None:
+        """Test fit when discrete y_binned array is explicitly supplied."""
+        bin_edges = [0.0, 10.0, 20.0]
+        y_cont = np.array([4.0, 14.0])
+        y_binned = np.array([0, 1])
+
+        mapper = ContinuousBinMapper(bin_edges=bin_edges, grid_resolution=10)
+        mapper.fit(y_continuous=y_cont, y_binned=y_binned)
+
+        assert mapper.n_bins_ == 2
+
+    # --- Validation and Error Handling Tests ---
+
+    def test_not_fitted_error(self) -> None:
+        """Test calling to_continuous_dist before fit raises NotFittedError."""
+        mapper = ContinuousBinMapper(bin_edges=[0.0, 10.0, 20.0])
+        with pytest.raises(NotFittedError):
+            mapper.to_continuous_dist([[0.5, 0.5]])
+
+    def test_invalid_y_continuous_ndim(self) -> None:
+        """Test error when y_continuous is not 1D."""
+        mapper = ContinuousBinMapper(bin_edges=[0.0, 10.0, 20.0])
+        with pytest.raises(ValueError, match="1D array"):
+            mapper.fit(np.array([[1.0, 2.0], [3.0, 4.0]]))
+
+    def test_y_binned_shape_mismatch(self) -> None:
+        """Test error when y_binned shape does not match y_continuous."""
+        mapper = ContinuousBinMapper(bin_edges=[0.0, 10.0, 20.0])
+        with pytest.raises(ValueError, match="Shape mismatch"):
+            mapper.fit(y_continuous=[5.0, 15.0], y_binned=[0])
+
+    def test_invalid_grid_y_out_of_bounds(self) -> None:
+        """Test error when custom grid_y exceeds bin_edges boundaries."""
+        bin_edges = [0.0, 10.0, 20.0]
+        invalid_grid = np.array([-1.0, 10.0, 25.0])
+        mapper = ContinuousBinMapper(bin_edges=bin_edges, grid_y=invalid_grid)
+
+        with pytest.raises(ValueError, match="must lie within bin bounds"):
+            mapper.fit([5.0, 15.0])
+
+    def test_invalid_grid_resolution(self) -> None:
+        """Test error when grid_resolution < 2."""
+        mapper = ContinuousBinMapper(bin_edges=[0.0, 10.0, 20.0], grid_resolution=1)
+        with pytest.raises(ValueError, match="'grid_resolution' must be at least 2"):
+            mapper.fit([5.0, 15.0])
+
+    def test_invalid_pmf_ndim(self) -> None:
+        """Test error when PMF passed to to_continuous_dist is not 2D."""
+        mapper = ContinuousBinMapper(bin_edges=[0.0, 10.0, 20.0]).fit([5.0, 15.0])
+        with pytest.raises(ValueError, match="2D array"):
+            mapper.to_continuous_dist(np.array([0.5, 0.5]))
+
+    def test_pmf_column_mismatch(self) -> None:
+        """Test error when PMF column count does not match n_bins_."""
+        mapper = ContinuousBinMapper(bin_edges=[0.0, 10.0, 20.0]).fit([5.0, 15.0])
+        # Mapper expects 2 bins, but PMF has 3 columns
+        with pytest.raises(ValueError, match="does not match fitted bin count"):
+            mapper.to_continuous_dist(np.array([[0.3, 0.3, 0.4]]))
