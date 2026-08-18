@@ -1,8 +1,10 @@
 # OrdBoost
 
+[![PyPI Version](https://img.shields.io/pypi/v/ordboost.svg)](https://pypi.org/project/ordboost/)
+[![PyPI Python Versions](https://img.shields.io/pypi/pyversions/ordboost.svg)](https://pypi.org/project/ordboost/)
 [![License](https://img.shields.io/github/license/Surgical-Recovery-and-Safety-Lab/ordboost)](LICENSE)
-[![Python 3.12+](https://img.shields.io/badge/python-3.12+-green.svg)](https://www.python.org/downloads/)
 [![tests](https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/actions/workflows/run_test.yml/badge.svg)](https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/actions/workflows/run_test.yml)
+[![Docs](https://img.shields.io/badge/docs-mkdocs-526CFE?style=flat&logo=materialforgithub)](https://Surgical-Recovery-and-Safety-Lab.github.io/ordboost/)
 
 ## Table of content
 1. [Overview](#overview)
@@ -25,7 +27,7 @@ By framing continuous regression as a dynamic ordinal binning problem, **ordboos
 
 * **Scikit-Learn API Compatibility**: Fits seamlessly into standard ML workflows using `fit`, `predict`, and `predict_dist`.
 * **Non-Parametric Probabilistic Output**: Obtains complete predictive distribution objects capable of extracting probability mass functions (PMF), cumulative distribution functions (CDF), percentiles (`ppf`), and dynamic prediction intervals.
-* **Flexible Continuous Target Mapping**: Maps continuous values to discrete target spaces using configurable binning strategies (`QuantileBinMapper`, `UniformBinMapper`, `EmpiricalMeanBinMapper`, `EmpiricalMedianBinMapper`).
+* **Flexible Continuous Target Mapping**: Maps continuous values to discrete target spaces using configurable binning strategies (`QuantileBinMapper`, `UniformBinMapper`, `EmpiricalMeanBinMapper`, `EmpiricalMedianBinMapper`, `ContinuousBinMapper`).
 * **Monotonic Ordinal Constraints**: Supports constrained ordinal boosting (e.g., isotonic constraints) across sequential boundaries.
 * **Built-in Probabilistic Evaluation**: Evaluates probabilistic predictions directly using CRPS (`crps_score`), quantile loss (`pinball_loss`), prediction interval coverage (`interval_coverage_rate`), and Winkler scores (`winkler_score`).
 
