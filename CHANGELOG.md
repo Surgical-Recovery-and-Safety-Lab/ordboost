@@ -8,11 +8,12 @@ and this project adheres to Semantic Versioning ([SemVer](https://semver.org/spe
 ## [Unreleased]
 
 ### Changed
-* Updated the README.md sections and content
-* Updated the OrdBoostRegressor example using string mapping for the mapper creation
+* Updated the README.md sections and content.
+* Updated the OrdBoostRegressor example using string mapping for the mapper creation.
+* Added new badges to the README.
 
 ### Fixed
-* Minor typo in the OrdBoostClassifier example
+* Minor typo in the OrdBoostClassifier example.
 
 ## [0.2.0] 2026-08-18
 
