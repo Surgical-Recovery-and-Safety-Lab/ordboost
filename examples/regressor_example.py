@@ -1,6 +1,5 @@
 import numpy as np
 
-from ordboost.mappers import QuantileBinMapper
 from ordboost.models import OrdBoostRegressor
 
 # 1. Generate synthetic continuous regression data with non-linear skew
@@ -10,26 +9,22 @@ y_train = np.exp(X_train[:, 0] * 0.6) + rng.normal(0.0, 0.5, size=300)
 
 X_test = rng.standard_normal((3, 3))
 
-# 2. Configure QuantileBinMapper with 5 sub-bin quantiles for wide/skewed targets
-quantile_mapper = QuantileBinMapper(
-    bin_edges=[0.0, 1.0, 2.5, 5.0, 15.0],
-    quantiles=(0.10, 0.25, 0.50, 0.75, 0.90),
-)
-
-# 3. Instantiate and fit OrdBoostRegressor using dependency injection
+# 2. Instantiate and fit OrdBoostRegressor using dependency injection
 reg = OrdBoostRegressor(
-    mapper=quantile_mapper,
+    bin_edges=[0.0, 1.0, 2.5, 5.0, 15.0],
+    mapper="quantile",
+    mapper_kwargs={"quantiles": (0.10, 0.25, 0.50, 0.75, 0.90)},
     learning_rate=0.05,
     max_iter=50,
     random_state=42,
 )
 reg.fit(X_train, y_train)
 
-# 4. Generate continuous point predictions
+# 3. Generate continuous point predictions
 y_pred_mean = reg.predict(X_test, method="mean")
 y_pred_median = reg.predict(X_test, method="median")
 
-# 5. Extract continuous predictive distribution object
+# 4. Extract continuous predictive distribution object
 dist = reg.predict_dist(X_test)
 
 # Evaluate 80% prediction intervals and cumulative probability P(Y <= 3.0)

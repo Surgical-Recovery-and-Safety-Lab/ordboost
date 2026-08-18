@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to Semantic Versioning ([SemVer](https://semver.org/spec/v2.0.0.html)).
 
+## [Unreleased]
+
+### Changed
+* Updated the README.md sections and content
+* Updated the OrdBoostRegressor example using string mapping for the mapper creation
+
+### Fixed
+* Minor typo in the OrdBoostClassifier example
+
 ## [0.2.0] 2026-08-18
 
 ### Changed
@@ -37,7 +46,7 @@ and this project adheres to Semantic Versioning ([SemVer](https://semver.org/spe
 * Tests for the Winkler score and interval converage metrics.
 
 ## [0.1.1] - 2026-08-13
-### Fixes
+### Fixed
 * Fixed README badges.
 
 ## [0.1.0] - 2026-08-13
@@ -50,6 +59,7 @@ and this project adheres to Semantic Versioning ([SemVer](https://semver.org/spe
 * Unit tests
 * Github workflow to run tests on push and pull request
 
+[Unreleased]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.2.0...HEAD
 [0.2.0]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/releases/tag/v0.1.0
