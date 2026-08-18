@@ -1,6 +1,6 @@
 """Comprehensive unit tests for OrdBoostClassifier."""
 
-from typing import Literal
+from typing import Literal, cast
 
 import numpy as np
 import pytest
@@ -12,7 +12,14 @@ from ordboost.distributions import (
     ContinuousPredictiveDistribution,
     DiscretePredictiveDistribution,
 )
-from ordboost.mappers import EmpiricalMeanBinMapper, QuantileBinMapper
+from ordboost.mappers import (
+    BaseBinMapper,
+    ContinuousBinMapper,
+    EmpiricalMeanBinMapper,
+    EmpiricalMedianBinMapper,
+    QuantileBinMapper,
+    UniformBinMapper,
+)
 from ordboost.models import OrdBoostClassifier, OrdBoostRegressor
 
 
@@ -318,7 +325,8 @@ class TestOrdBoostRegressorInit:
         assert reg.n_bins == 20
         assert reg.bin_edges is None
         assert reg.bin_strategy == "quantile"
-        assert reg.mapper is None
+        assert reg.mapper == "median"
+        assert reg.mapper_kwargs is None
         assert reg.learning_rate == 0.1
         assert reg.max_iter == 100
 
@@ -381,6 +389,78 @@ class TestOrdBoostRegressorComputeBinEdges:
             reg._compute_bin_edges(np.array([1.0, 2.0]))
 
 
+class TestOrdBoostRegressorResolveMapper:
+    """Tests for _resolve_mapper private method and string shortcut handling."""
+
+    @pytest.mark.parametrize(
+        ("shortcut", "expected_cls"),
+        [
+            ("median", EmpiricalMedianBinMapper),
+            ("mean", EmpiricalMeanBinMapper),
+            ("quantile", QuantileBinMapper),
+            ("uniform", UniformBinMapper),
+            ("continuous", ContinuousBinMapper),
+        ],
+    )
+    def test_resolve_mapper_string_shortcuts(
+        self, shortcut: str, expected_cls: type[BaseBinMapper]
+    ) -> None:
+        """Test that valid string shortcuts resolve to correct mapper instances."""
+        reg = OrdBoostRegressor(mapper=shortcut)  # type: ignore[arg-type]
+        reg.bin_edges_ = np.array([0.0, 10.0, 20.0])
+        resolved = reg._resolve_mapper()
+
+        assert isinstance(resolved, expected_cls)
+        np.testing.assert_array_equal(resolved.bin_edges, reg.bin_edges_)
+
+    def test_resolve_mapper_none_defaults_to_median(self) -> None:
+        """Test that mapper=None defaults to EmpiricalMedianBinMapper."""
+        reg = OrdBoostRegressor(mapper=None)
+        reg.bin_edges_ = np.array([0.0, 10.0, 20.0])
+        resolved = reg._resolve_mapper()
+
+        assert isinstance(resolved, EmpiricalMedianBinMapper)
+
+    def test_resolve_mapper_passes_mapper_kwargs(self) -> None:
+        """Test that mapper_kwargs are forwarded during string mapper instantiation."""
+        reg = OrdBoostRegressor(
+            mapper="continuous",
+            mapper_kwargs={"grid_resolution": 50},
+        )
+        reg.bin_edges_ = np.array([0.0, 10.0, 20.0])
+        resolved = cast(ContinuousBinMapper, reg._resolve_mapper())
+
+        assert isinstance(resolved, ContinuousBinMapper)
+        assert resolved.grid_resolution == 50
+
+    def test_resolve_mapper_custom_instance_cloned(self) -> None:
+        """Test that pre-instantiated BaseBinMapper object is cloned and assigned edges."""
+        custom_mapper = EmpiricalMeanBinMapper(bin_edges=None)
+        reg = OrdBoostRegressor(mapper=custom_mapper)
+        reg.bin_edges_ = np.array([0.0, 5.0, 10.0])
+        resolved = reg._resolve_mapper()
+
+        assert isinstance(resolved, EmpiricalMeanBinMapper)
+        assert resolved is not custom_mapper  # Must be a cloned instance
+        np.testing.assert_array_equal(resolved.bin_edges, reg.bin_edges_)
+
+    def test_resolve_mapper_invalid_shortcut_raises_error(self) -> None:
+        """Test that unknown string shortcut raises descriptive ValueError."""
+        reg = OrdBoostRegressor(mapper="unknown_shortcut")  # type: ignore[arg-type]
+        reg.bin_edges_ = np.array([0.0, 10.0, 20.0])
+
+        with pytest.raises(ValueError, match="Unknown mapper shortcut"):
+            reg._resolve_mapper()
+
+    def test_resolve_mapper_invalid_type_raises_error(self) -> None:
+        """Test that non-string and non-mapper object raises ValueError."""
+        reg = OrdBoostRegressor(mapper=12345)  # type: ignore[arg-type]
+        reg.bin_edges_ = np.array([0.0, 10.0, 20.0])
+
+        with pytest.raises(ValueError, match="Expected 'mapper' to be a valid string"):
+            reg._resolve_mapper()
+
+
 class TestOrdBoostRegressorFit:
     """Tests for OrdBoostRegressor fit method."""
 
@@ -395,7 +475,7 @@ class TestOrdBoostRegressorFit:
     def test_fit_success_default_mapper(
         self, synthetic_data: tuple[np.ndarray, np.ndarray]
     ) -> None:
-        """Test fitting model with default settings."""
+        """Test fitting model with default settings (median mapper shortcut)."""
         X, y = synthetic_data
         reg = OrdBoostRegressor(n_bins=5, max_iter=5, random_state=42)
         fitted_reg = reg.fit(X, y)
@@ -404,15 +484,16 @@ class TestOrdBoostRegressorFit:
         assert hasattr(reg, "classifier_")
         assert hasattr(reg, "mapper_")
         assert hasattr(reg, "bin_edges_")
+        assert isinstance(reg.mapper_, EmpiricalMedianBinMapper)
         assert reg.n_features_in_ == 3
         assert len(reg.bin_edges_) >= 2
 
-    def test_fit_with_custom_mean_mapper(
+    def test_fit_with_custom_mean_mapper_instance(
         self, synthetic_data: tuple[np.ndarray, np.ndarray]
     ) -> None:
-        """Test fitting model with explicit EmpiricalMeanBinMapper instance."""
+        """Test fitting model with unconfigured EmpiricalMeanBinMapper instance."""
         X, y = synthetic_data
-        custom_mapper = EmpiricalMeanBinMapper(bin_edges=[0.0, 1.0])
+        custom_mapper = EmpiricalMeanBinMapper()
         reg = OrdBoostRegressor(
             n_bins=5, mapper=custom_mapper, max_iter=5, random_state=42
         )
@@ -420,12 +501,12 @@ class TestOrdBoostRegressorFit:
 
         assert isinstance(reg.mapper_, EmpiricalMeanBinMapper)
 
-    def test_fit_with_custom_quantile_mapper(
+    def test_fit_with_custom_quantile_mapper_instance(
         self, synthetic_data: tuple[np.ndarray, np.ndarray]
     ) -> None:
-        """Test fitting model with explicit QuantileBinMapper instance."""
+        """Test fitting model with unconfigured QuantileBinMapper instance."""
         X, y = synthetic_data
-        custom_mapper = QuantileBinMapper(bin_edges=[0.0, 1.0])
+        custom_mapper = QuantileBinMapper()
         reg = OrdBoostRegressor(
             n_bins=5, mapper=custom_mapper, max_iter=5, random_state=42
         )
@@ -447,13 +528,13 @@ class TestOrdBoostRegressorFit:
         with pytest.raises(ValueError):
             reg.fit(X, y)
 
-    def test_fit_mapper_not_BaseBinMapper(
+    def test_fit_invalid_mapper_raises_error(
         self, synthetic_data: tuple[np.ndarray, np.ndarray]
     ) -> None:
-        """Test case when mapper is not a BaseBinMapper."""
+        """Test fitting with invalid mapper shortcut raises ValueError."""
         X, y = synthetic_data
-        reg = OrdBoostRegressor(max_iter=5, mapper="invalid")  # type: ignore
-        with pytest.raises(ValueError, match="BaseBinMapper"):
+        reg = OrdBoostRegressor(max_iter=5, mapper="invalid")  # type: ignore[arg-type]
+        with pytest.raises(ValueError, match="Unknown mapper shortcut"):
             reg.fit(X, y)
 
 
@@ -562,3 +643,82 @@ class TestOrdBoostRegressorPredictDist:
         reg = OrdBoostRegressor()
         with pytest.raises(NotFittedError):
             reg.predict_dist(np.ones((2, 2)))
+
+
+class TestOrdBoostRegressorGetSetParams:
+    """Tests for OrdBoostRegressor get_params, set_params, and scikit-learn compatibility."""
+
+    def test_get_params_returns_merged_kwargs(self) -> None:
+        """Verify get_params returns explicit attributes and extra kwargs at top level."""
+        reg = OrdBoostRegressor(
+            learning_rate=0.05,
+            max_iter=50,
+            max_leaf_nodes=15,  # pass-through kwarg
+            early_stopping=False,  # pass-through kwarg
+        )
+        params = reg.get_params()
+
+        # Check explicit parameters
+        assert params["learning_rate"] == 0.05
+        assert params["max_iter"] == 50
+
+        # Check pass-through kwargs
+        assert params["max_leaf_nodes"] == 15
+        assert params["early_stopping"] is False
+
+        # Ensure raw 'kwargs' container dict isn't exposed directly
+        assert "kwargs" not in params
+
+    def test_set_params_updates_both_explicit_and_kwargs(self) -> None:
+        """Verify set_params updates both standard init fields and extra kwargs."""
+        reg = OrdBoostRegressor(learning_rate=0.1, max_leaf_nodes=31)
+
+        reg.set_params(learning_rate=0.01, max_leaf_nodes=15, min_samples_leaf=10)
+
+        # Check explicit params
+        assert reg.learning_rate == 0.01
+        assert reg.min_samples_leaf == 10
+
+        # Check kwarg param
+        assert reg.kwargs["max_leaf_nodes"] == 15
+
+        # Verify get_params reflects changes
+        updated_params = reg.get_params()
+        assert updated_params["learning_rate"] == 0.01
+        assert updated_params["min_samples_leaf"] == 10
+        assert updated_params["max_leaf_nodes"] == 15
+
+    def test_clone_compatibility(self) -> None:
+        """Verify sklearn.base.clone works seamlessly with extra kwargs."""
+        reg = OrdBoostRegressor(
+            max_iter=20,
+            max_bins=64,
+            random_state=42,
+        )
+
+        cloned_reg = clone(reg)
+
+        assert cloned_reg.max_iter == 20  # type: ignore[attr-defined]
+        assert cloned_reg.kwargs.get("max_bins") == 64  # type: ignore[attr-defined]
+        assert cloned_reg.random_state == 42  # type: ignore[attr-defined]
+        assert cloned_reg is not reg
+
+    def test_grid_search_cv_compatibility(self) -> None:
+        """Test that GridSearchCV can manipulate explicit and kwarg hyperparameters."""
+        X = np.random.randn(50, 3)
+        y = np.random.randn(50) * 10.0
+
+        param_grid = {
+            "learning_rate": [0.01, 0.1],
+            "max_leaf_nodes": [10, 20],  # kwarg tuning
+        }
+
+        grid = GridSearchCV(
+            estimator=OrdBoostRegressor(max_iter=5, n_bins=3),
+            param_grid=param_grid,
+            cv=2,
+        )
+
+        grid.fit(X, y)
+        assert grid.best_estimator_ is not None
+        assert "max_leaf_nodes" in grid.best_params_
