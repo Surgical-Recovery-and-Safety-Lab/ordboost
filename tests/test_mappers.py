@@ -59,6 +59,14 @@ class TestBaseBinMapperABC:
 class TestBaseBinMapperEdgeValidation:
     """Tests for _validate_edges method in BaseBinMapper."""
 
+    def test_validate_edges_none_raises_value_error(self) -> None:
+        """Test that None bin_edges raises ValueError in _validate_edges."""
+        mapper = DummyBinMapper(bin_edges=None)
+        with pytest.raises(
+            ValueError, match="'bin_edges' must be set on the mapper prior to fitting"
+        ):
+            mapper._validate_edges()
+
     def test_validate_edges_success(self) -> None:
         """Test validation with valid 1D monotonic edges."""
         mapper = DummyBinMapper(bin_edges=[0.0, 5.0, 10.0, 20.0])
@@ -115,8 +123,13 @@ class TestDummyBinMapperConcrete:
 class TestEmpiricalMeanBinMapperInit:
     """Tests for EmpiricalMeanBinMapper initialization."""
 
+    def test_init_default_bin_edges_is_none(self) -> None:
+        """Verify __init__ defaults bin_edges to None when omitted."""
+        mapper = EmpiricalMeanBinMapper()
+        assert mapper.bin_edges is None
+
     def test_init_stores_bin_edges(self) -> None:
-        """Verify __init__ correctly stores bin_edges attribute."""
+        """Verify __init__ correctly stores explicit bin_edges attribute."""
         edges = [0, 5, 10, 20]
         mapper = EmpiricalMeanBinMapper(bin_edges=edges)
         assert mapper.bin_edges == edges
@@ -124,6 +137,22 @@ class TestEmpiricalMeanBinMapperInit:
 
 class TestEmpiricalMeanBinMapperFit:
     """Tests for EmpiricalMeanBinMapper fit method, parameter validation, and fallbacks."""
+
+    def test_fit_none_bin_edges_raises_error(self) -> None:
+        """Test fitting with bin_edges=None raises ValueError."""
+        mapper = EmpiricalMeanBinMapper()
+        with pytest.raises(
+            ValueError, match="'bin_edges' must be set on the mapper prior to fitting"
+        ):
+            mapper.fit([1.0, 2.0, 3.0])
+
+    def test_fit_after_deferred_bin_edges_assignment(self) -> None:
+        """Test assigning bin_edges post-init enables successful fit."""
+        mapper = EmpiricalMeanBinMapper()
+        mapper.bin_edges = [0.0, 10.0, 20.0]
+        mapper.fit([2.0, 15.0])
+        assert mapper.n_bins_ == 2
+        np.testing.assert_array_equal(mapper.bin_edges_, [0.0, 10.0, 20.0])
 
     def test_fit_success_automatic_binning(self) -> None:
         """Test successful fit with automatic digitization of continuous targets."""
@@ -266,6 +295,11 @@ class TestEmpiricalMeanBinMapperToContinuousDist:
 class TestEmpiricalMedianBinMapperInit:
     """Tests for EmpiricalMedianBinMapper initialization."""
 
+    def test_init_default_bin_edges_is_none(self) -> None:
+        """Verify __init__ defaults bin_edges to None when omitted."""
+        mapper = EmpiricalMedianBinMapper()
+        assert mapper.bin_edges is None
+
     def test_init_stores_bin_edges(self) -> None:
         """Verify __init__ correctly stores bin_edges attribute."""
         edges = [0, 5, 10, 20]
@@ -275,6 +309,21 @@ class TestEmpiricalMedianBinMapperInit:
 
 class TestEmpiricalMedianBinMapperFit:
     """Tests for EmpiricalMedianBinMapper fit method and parameter validation."""
+
+    def test_fit_none_bin_edges_raises_error(self) -> None:
+        """Test fitting with bin_edges=None raises ValueError."""
+        mapper = EmpiricalMedianBinMapper()
+        with pytest.raises(
+            ValueError, match="'bin_edges' must be set on the mapper prior to fitting"
+        ):
+            mapper.fit([1.0, 2.0, 3.0])
+
+    def test_fit_after_deferred_bin_edges_assignment(self) -> None:
+        """Test assigning bin_edges post-init enables successful fit."""
+        mapper = EmpiricalMedianBinMapper()
+        mapper.bin_edges = [0.0, 10.0, 20.0]
+        mapper.fit([2.0, 15.0])
+        assert mapper.n_bins_ == 2
 
     def test_fit_success_skewed_bins(self) -> None:
         """Test that median calculation differs correctly from mean on skewed data."""
@@ -417,6 +466,11 @@ class TestEmpiricalMedianBinMapperToContinuousDist:
 class TestQuantileBinMapperInit:
     """Tests for QuantileBinMapper initialization."""
 
+    def test_init_default_bin_edges_is_none(self) -> None:
+        """Verify __init__ defaults bin_edges to None when omitted."""
+        mapper = QuantileBinMapper()
+        assert mapper.bin_edges is None
+
     def test_init_stores_parameters(self) -> None:
         """Verify __init__ correctly stores bin_edges and quantiles attributes."""
         edges = [0, 10, 20]
@@ -428,6 +482,14 @@ class TestQuantileBinMapperInit:
 
 class TestQuantileBinMapperFit:
     """Tests for QuantileBinMapper fit method, sub-grid logic, and failure modes."""
+
+    def test_fit_none_bin_edges_raises_error(self) -> None:
+        """Test fitting with bin_edges=None raises ValueError."""
+        mapper = QuantileBinMapper()
+        with pytest.raises(
+            ValueError, match="'bin_edges' must be set on the mapper prior to fitting"
+        ):
+            mapper.fit([1.0, 2.0, 3.0])
 
     def test_fit_success_subgrid_construction(self) -> None:
         """Test successful fit and sub-grid point generation across populated bins."""
@@ -577,6 +639,11 @@ class TestQuantileBinMapperToContinuousDist:
 class TestUniformBinMapperInit:
     """Tests for UniformBinMapper initialization."""
 
+    def test_init_default_bin_edges_is_none(self) -> None:
+        """Verify __init__ defaults bin_edges to None when omitted."""
+        mapper = UniformBinMapper()
+        assert mapper.bin_edges is None
+
     def test_init_stores_bin_edges(self) -> None:
         """Verify __init__ correctly stores bin_edges attribute."""
         edges = [0, 10, 20, 30]
@@ -586,6 +653,14 @@ class TestUniformBinMapperInit:
 
 class TestUniformBinMapperFit:
     """Tests for UniformBinMapper fit method and edge validation."""
+
+    def test_fit_none_bin_edges_raises_error(self) -> None:
+        """Test fitting with bin_edges=None raises ValueError."""
+        mapper = UniformBinMapper()
+        with pytest.raises(
+            ValueError, match="'bin_edges' must be set on the mapper prior to fitting"
+        ):
+            mapper.fit([1.0, 2.0, 3.0])
 
     def test_fit_success_without_targets(self) -> None:
         """Test successful fit without providing y_continuous or y_binned."""
@@ -689,6 +764,19 @@ class TestUniformBinMapperToContinuousDist:
 
 class TestContinuousBinMapper:
     """Unit test suite for ContinuousBinMapper."""
+
+    def test_init_default_bin_edges_is_none(self) -> None:
+        """Verify __init__ defaults bin_edges to None when omitted."""
+        mapper = ContinuousBinMapper()
+        assert mapper.bin_edges is None
+
+    def test_fit_none_bin_edges_raises_error(self) -> None:
+        """Test fitting with bin_edges=None raises ValueError."""
+        mapper = ContinuousBinMapper()
+        with pytest.raises(
+            ValueError, match="'bin_edges' must be set on the mapper prior to fitting"
+        ):
+            mapper.fit([1.0, 2.0, 3.0])
 
     def test_fit_and_attributes_default_grid(self) -> None:
         """Test default grid creation and attribute initialization during fit."""
