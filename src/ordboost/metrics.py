@@ -107,26 +107,22 @@ def crps_score(
 
 
 def pinball_loss(
-    y_true: Union[np.ndarray, list],
-    y_pred_q: np.ndarray,
+    y_true: ArrayLike,
+    y_pred_q: ArrayLike,
     q: float,
-    sample_weight: Union[np.ndarray, None] = None,
+    sample_weight: Union[ArrayLike, None] = None,
 ) -> float:
     """Compute the pinball (quantile) loss for a specific quantile level q.
 
-    The pinball loss penalizes over- and under-prediction asymmetrically:
-
-        L_q(y, q_pred) = max(q * (y - q_pred), (q - 1) * (y - q_pred))
-
     Parameters
     ----------
-    y_true : array-like of shape (n_samples,)
+    y_true : ArrayLike of shape (n_samples,)
         True physical target labels.
-    y_pred_q : array-like of shape (n_samples,)
+    y_pred_q : ArrayLike of shape (n_samples,)
         Predicted target values at quantile level `q`.
     q : float
         Target quantile level in the range (0.0, 1.0).
-    sample_weight : array-like of shape (n_samples,), optional
+    sample_weight : ArrayLike of shape (n_samples,), optional
         Sample weights for weighted mean computation.
 
     Returns
