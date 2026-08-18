@@ -162,3 +162,95 @@ def pinball_loss(
         return float(np.average(loss, weights=weights))
 
     return float(np.mean(loss))
+
+
+def interval_coverage_rate(
+    y_true: ArrayLike,
+    dist: ContinuousPredictiveDistribution,
+    alpha: float = 0.10,
+    sample_weight: Union[ArrayLike, None] = None,
+) -> float:
+    """Compute empirical coverage rate for a central prediction interval.
+
+    Parameters
+    ----------
+    y_true : ArrayLike of shape (n_samples,)
+        True continuous target values.
+    dist : ContinuousPredictiveDistribution
+        Predicted continuous distributions.
+    alpha : float, default=0.10
+        Tail significance level (e.g., alpha=0.10 specifies a 90% interval).
+    sample_weight : ArrayLike of shape (n_samples,), optional
+        Sample weights for weighted coverage computation.
+
+    Returns
+    -------
+    float
+        Proportion of true observations lying within predicted interval bounds.
+
+    """
+    y_true_arr = np.asarray(y_true, dtype=float)
+    lower, upper = dist.interval(alpha=alpha)
+
+    covered = ((y_true_arr >= lower) & (y_true_arr <= upper)).astype(float)
+
+    if sample_weight is not None:
+        weights = np.asarray(sample_weight, dtype=float)
+        if weights.shape != y_true_arr.shape:
+            raise ValueError(
+                f"Expected 'sample_weight' shape {y_true_arr.shape}, got {weights.shape}."
+            )
+        return float(np.average(covered, weights=weights))
+
+    return float(np.mean(covered))
+
+
+def winkler_score(
+    y_true: ArrayLike,
+    dist: ContinuousPredictiveDistribution,
+    alpha: float = 0.10,
+    sample_weight: Union[ArrayLike, None] = None,
+) -> float:
+    """Compute mean Winkler score for prediction intervals at significance level alpha.
+
+    Penalizes interval width and asymmetrically penalizes targets that fall
+    outside the predicted lower and upper bounds.
+
+    Parameters
+    ----------
+    y_true : ArrayLike of shape (n_samples,)
+        True continuous target values.
+    dist : ContinuousPredictiveDistribution
+        Predicted continuous distributions.
+    alpha : float, default=0.10
+        Tail significance level in range (0.0, 1.0).
+    sample_weight : ArrayLike of shape (n_samples,), optional
+        Sample weights for weighted mean computation.
+
+    Returns
+    -------
+    float
+        Mean Winkler score across samples (lower is better).
+
+    """
+    if not 0.0 < alpha < 1.0:
+        raise ValueError("Significance level 'alpha' must lie within (0.0, 1.0).")
+
+    y_true_arr = np.asarray(y_true, dtype=float)
+    lower, upper = dist.interval(alpha=alpha)
+
+    width = upper - lower
+    under_penalty = (2.0 / alpha) * (lower - y_true_arr) * (y_true_arr < lower)
+    over_penalty = (2.0 / alpha) * (y_true_arr - upper) * (y_true_arr > upper)
+
+    sample_scores = width + under_penalty + over_penalty
+
+    if sample_weight is not None:
+        weights = np.asarray(sample_weight, dtype=float)
+        if weights.shape != y_true_arr.shape:
+            raise ValueError(
+                f"Expected 'sample_weight' shape {y_true_arr.shape}, got {weights.shape}."
+            )
+        return float(np.average(sample_scores, weights=weights))
+
+    return float(np.mean(sample_scores))
