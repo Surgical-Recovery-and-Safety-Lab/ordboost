@@ -1,79 +1,99 @@
-"""Evaluation metrics for discrete ordinal probabilistic forecasts."""
+"""Evaluation metrics for discrete ordinal and continuous probabilistic forecasts."""
 
 from typing import Union
 
 import numpy as np
+from numpy.typing import ArrayLike
 
-from ordboost.distributions import PredictiveDistribution
+from ordboost.distributions import (
+    ContinuousPredictiveDistribution,
+    DiscretePredictiveDistribution,
+)
 
 
 def crps_score(
-    y_true: Union[np.ndarray, list],
-    y_dist: PredictiveDistribution,
-    sample_weight: Union[np.ndarray, None] = None,
+    y_true: ArrayLike,
+    y_dist: Union[ContinuousPredictiveDistribution, DiscretePredictiveDistribution],
+    sample_weight: Union[ArrayLike, None] = None,
 ) -> float:
-    """Compute the discrete Continuous Ranked Probability Score (CRPS).
+    """Compute the Continuous Ranked Probability Score (CRPS).
 
-    The discrete CRPS measures the distance between the predicted cumulative
-    distribution function (CDF) and the empirical step function of the true
-    observed ordinal target:
-
-        CRPS(F, y) = sum_{k=0}^{K-1} (F(c_k) - I(y <= c_k))^2
-
-    A lower CRPS score indicates better probabilistic forecast performance,
-    balancing both calibration and sharpness.
+    For discrete distributions, evaluates squared cumulative probability error
+    across threshold classes. For continuous predictive distributions,
+    evaluates integrated squared distance between predicted CDF F(y) and
+    the empirical step function I(y_true <= y) via trapezoidal integration.
 
     Parameters
     ----------
-    y_true : array-like of shape (n_samples,)
-        True physical target labels corresponding to class values in `y_dist.classes`.
+    y_true : ArrayLike of shape (n_samples,)
+        True physical target values.
     y_dist : PredictiveDistribution
-        Predicted probability distribution object containing CDF and class metadata.
-    sample_weight : array-like of shape (n_samples,), optional
+        Predicted probability distribution object (discrete or continuous).
+    sample_weight : ArrayLike of shape (n_samples,), optional
         Sample weights for weighted mean computation.
 
     Returns
     -------
     float
-        The average discrete CRPS across all samples.
+        The average CRPS across all samples (lower is better).
 
     Raises
     ------
     ValueError
-        If `y_true` contains class values not present in `y_dist.classes`,
-        or if array dimensions do not match `y_dist`.
+        If `y_true` shape or sample count mismatches `y_dist`.
 
     """
-    y_true_arr = np.asarray(y_true)
+    y_true_arr = np.asarray(y_true, dtype=float)
     if y_true_arr.ndim != 1:
         raise ValueError(
             f"Expected 'y_true' to be a 1D array, got shape {y_true_arr.shape}."
         )
 
     n_samples = len(y_true_arr)
-    if n_samples != y_dist.pmf.shape[0]:
-        raise ValueError(
-            f"Sample count mismatch: 'y_true' has {n_samples} samples, but "
-            f"'y_dist' has {y_dist.pmf.shape[0]} samples."
+
+    # Handle ContinuousPredictiveDistribution via trapezoidal integration
+    if isinstance(y_dist, ContinuousPredictiveDistribution):
+        if n_samples != y_dist.grid_cdf.shape[0]:
+            raise ValueError(
+                f"Sample count mismatch: 'y_true' has {n_samples} samples, but "
+                f"'y_dist' has {y_dist.grid_cdf.shape[0]} samples."
+            )
+
+        grid_y = y_dist.grid_y
+        grid_cdf = y_dist.grid_cdf
+
+        # Empirical step function I(y_true <= grid_y)
+        true_indicator = (y_true_arr[:, np.newaxis] <= grid_y[np.newaxis, :]).astype(
+            float
         )
 
-    # Validate that all true targets exist in classes
-    if not set(y_true_arr).issubset(set(y_dist.classes)):
-        missing_classes = set(y_true_arr) - set(y_dist.classes)
-        raise ValueError(
-            f"y_true contains target values not present in y_dist.classes: "
-            f"{missing_classes}"
-        )
+        # Integrated squared distance along continuous physical grid dy
+        cdf_diff_sq = (grid_cdf - true_indicator) ** 2
+        dy = np.diff(grid_y)
+        avg_sq_diff = 0.5 * (cdf_diff_sq[:, :-1] + cdf_diff_sq[:, 1:])
+        sample_crps = np.sum(avg_sq_diff * dy, axis=1)
 
-    # Construct empirical step function I(y_true <= c_k) shape: (n_samples, n_classes)
-    # Broadcasting: y_true_arr[:, None] <= classes[None, :]
-    true_indicator = (
-        y_true_arr[:, np.newaxis] <= y_dist.classes[np.newaxis, :]
-    ).astype(float)
+    else:
+        # Handle Discrete PredictiveDistribution
+        if n_samples != y_dist.pmf.shape[0]:
+            raise ValueError(
+                f"Sample count mismatch: 'y_true' has {n_samples} samples, but "
+                f"'y_dist' has {y_dist.pmf.shape[0]} samples."
+            )
 
-    # Compute squared cumulative probability error across all threshold levels
-    cdf_diff_sq = (y_dist.cdf - true_indicator) ** 2
-    sample_crps = np.sum(cdf_diff_sq, axis=1)
+        if not set(y_true_arr).issubset(set(y_dist.classes)):
+            missing_classes = set(y_true_arr) - set(y_dist.classes)
+            raise ValueError(
+                f"y_true contains target values not present in y_dist.classes: "
+                f"{missing_classes}"
+            )
+
+        true_indicator = (
+            y_true_arr[:, np.newaxis] <= y_dist.classes[np.newaxis, :]
+        ).astype(float)
+
+        cdf_diff_sq = (y_dist.cdf - true_indicator) ** 2
+        sample_crps = np.sum(cdf_diff_sq, axis=1)
 
     if sample_weight is not None:
         weights = np.asarray(sample_weight, dtype=float)
