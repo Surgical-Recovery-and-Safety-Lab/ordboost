@@ -11,6 +11,9 @@ and this project adheres to Semantic Versioning ([SemVer](https://semver.org/spe
 * Updated the README.md sections and content.
 * Updated the OrdBoostRegressor example using string mapping for the mapper creation.
 * Added new badges to the README.
+* Optimised the PPF and CDF functions to use vectorisation rather than for loops in the ContinuousPredictiveDistribution class.
+* ContinuousPredictiveDistribution CDF function now accepts a 1D array of y values.
+* Updated test cases for the ContinuousPredictiveDistribution class.
 
 ### Fixed
 * Minor typo in the OrdBoostClassifier example.
