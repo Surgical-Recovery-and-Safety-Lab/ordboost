@@ -14,7 +14,7 @@ from ordboost.distributions import (
     ContinuousPredictiveDistribution,
     DiscretePredictiveDistribution,
 )
-from ordboost.mappers import BaseBinMapper, EmpiricalMedianBinMapper
+from ordboost.mappers import BaseBinMapper
 
 
 class OrdBoostClassifier(BaseEstimator, ClassifierMixin):
@@ -55,9 +55,9 @@ class OrdBoostClassifier(BaseEstimator, ClassifierMixin):
 
     Methods
     -------
-    get_param(deep)
+    get_params(deep)
         Get parameters for this estimator, including dynamically passed kwargs.
-    set_param(**param)
+    set_params(**param)
         Set the parameters of this estimator.
     fit(X, y)
         Fit the ordinal gradient boosting model.
@@ -423,6 +423,10 @@ class OrdBoostRegressor(BaseEstimator, RegressorMixin):
 
     Methods
     -------
+    get_params(deep)
+        Get parameters for this estimator, including dynamically passed kwargs.
+    set_params(**param)
+        Set the parameters of this estimator.
     fit(X, y)
         Fit the continuous ordinal gradient boosting regressor.
     predict_dist(X)
@@ -467,6 +471,64 @@ class OrdBoostRegressor(BaseEstimator, RegressorMixin):
         self.n_jobs = n_jobs
         self.random_state = random_state
         self.kwargs = kwargs
+
+    def get_params(self, deep: bool = True) -> dict[str, Any]:
+        """Get parameters for this estimator, including dynamically passed kwargs.
+
+        Parameters
+        ----------
+        deep : bool, default=True
+            If True, will return the parameters for this estimator and
+            contained sub-objects that are estimators.
+
+        Returns
+        -------
+        params : dict
+            Parameter names mapped to their values.
+
+        """
+        # Fetch standard explicit parameters from BaseEstimator
+        params = super().get_params(deep=deep)
+
+        # Remove raw 'kwargs' dictionary entry if BaseEstimator captured it
+        params.pop("kwargs", None)
+
+        # Merge extra kwargs directly into top-level parameter dictionary
+        if hasattr(self, "kwargs") and isinstance(self.kwargs, dict):
+            params.update(self.kwargs)
+
+        return params
+
+    def set_params(self, **params: Any) -> "OrdBoostRegressor":
+        """Set the parameters of this estimator.
+
+        Parameters
+        ----------
+        **params : dict
+            Estimator parameters.
+
+        Returns
+        -------
+        self : OrdBoostRegressor
+            Estimator instance.
+
+        """
+        if not params:
+            return self
+
+        # Separate explicit init fields from additional kwargs
+        valid_params = self._get_param_names()
+
+        if not hasattr(self, "kwargs") or self.kwargs is None:
+            self.kwargs = {}
+
+        for key, value in params.items():
+            if key in valid_params:
+                setattr(self, key, value)
+            else:
+                self.kwargs[key] = value
+
+        return self
 
     def _compute_bin_edges(self, y: np.ndarray) -> np.ndarray:
         """Compute or validate continuous target bin boundary edges.
@@ -582,6 +644,9 @@ class OrdBoostRegressor(BaseEstimator, RegressorMixin):
     def fit(self, X: ArrayLike, y: ArrayLike) -> "OrdBoostRegressor":
         """Fit the ordinal boosting regressor on continuous targets.
 
+        Discretizes `y` into bins using `bin_edges_`, fits the underlying
+        `OrdBoostClassifier`, and fits the resolved `mapper_` strategy.
+
         Parameters
         ----------
         X : ArrayLike of shape (n_samples, n_features)
@@ -615,18 +680,10 @@ class OrdBoostRegressor(BaseEstimator, RegressorMixin):
         )
         self.classifier_.fit(X_arr, y_binned)
 
-        # Fit mapper strategy
-        if self.mapper is None:
-            self.mapper_ = EmpiricalMedianBinMapper(bin_edges=self.bin_edges_)
-        else:
-            if not isinstance(self.mapper, BaseBinMapper):
-                raise ValueError(
-                    "Expected 'mapper' to be an instance of BaseBinMapper."
-                )
-            self.mapper_ = cast(BaseBinMapper, clone(self.mapper))
-            self.mapper_.bin_edges = self.bin_edges_
-
+        # Resolve and fit bin mapper
+        self.mapper_ = self._resolve_mapper()
         self.mapper_.fit(y_continuous=y_arr, y_binned=y_binned)
+
         return self
 
     def predict_dist(self, X: ArrayLike) -> ContinuousPredictiveDistribution:
