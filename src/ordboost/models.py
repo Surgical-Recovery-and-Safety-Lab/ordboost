@@ -184,7 +184,7 @@ class OrdBoostClassifier(BaseEstimator, ClassifierMixin):
         estimator.fit(X, y_binary)
         return estimator
 
-    def fit(self, X: Any, y: Any) -> "OrdBoostClassifier":
+    def fit(self, X: ArrayLike, y: ArrayLike) -> "OrdBoostClassifier":
         """Fit the ordinal gradient boosting model on training data.
 
         Parameters
@@ -323,7 +323,7 @@ class OrdBoostClassifier(BaseEstimator, ClassifierMixin):
 
         return pmf
 
-    def predict_dist(self, X: Any) -> DiscretePredictiveDistribution:
+    def predict_dist(self, X: ArrayLike) -> DiscretePredictiveDistribution:
         """Predict probability distribution wrapped in a `DiscretePredictiveDistribution`.
 
         Parameters
@@ -340,7 +340,7 @@ class OrdBoostClassifier(BaseEstimator, ClassifierMixin):
         return DiscretePredictiveDistribution(pmf=pmf, classes=self.classes_)
 
     def predict(
-        self, X: Any, method: Literal["median", "mean"] = "median"
+        self, X: ArrayLike, method: Literal["median", "mean"] = "median"
     ) -> np.ndarray:
         """Predict target class point estimates for X.
 
