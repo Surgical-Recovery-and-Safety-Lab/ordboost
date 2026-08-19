@@ -28,6 +28,7 @@ theme:
 
 plugins:
   - search
+  - include-markdown
   - mkdocstrings:
       handlers:
         python:

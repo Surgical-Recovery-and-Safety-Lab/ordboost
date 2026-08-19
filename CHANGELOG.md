@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to Semantic Versioning ([SemVer](https://semver.org/spec/v2.0.0.html)).
 
+## [Unreleased]
+
+### Added
+* Github workflow to publish package on PyPI when a new released is published.
+* Example scripts for each example in the MkDocs documentation.
+* Package for including the example files directly into the docs.
+
+### Changed
+* Replaced the example code in the documentation with the example scripts.
+
 ## [0.2.1] 2026-08-19
 
 ### Added
