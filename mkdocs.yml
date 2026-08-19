@@ -1,0 +1,46 @@
+site_name: OrdBoost
+site_description: Non-parametric discrete ordinal gradient boosting and continuous regression.
+site_url: https://Surgical-Recovery-and-Safety-Lab.github.io/ordboost/
+repo_url: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost
+repo_name: Surgical-Recovery-and-Safety-Lab/ordboost
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - content.code.copy
+    - navigation.indexes
+    - navigation.top
+    - navigation.sections
+    - navigation.expand
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            docstring_style: numpy
+            show_root_heading: true
+            show_source: true
+
+nav:
+  - Home: index.md
+  - Examples: examples.md
+  - API Reference:
+      - Models: api/models.md
+      - Mappers: api/mappers.md
+      - Distributions: api/distributions.md
+      - Metrics: api/metrics.md
