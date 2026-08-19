@@ -20,7 +20,7 @@ By reframing continuous targets as discrete ordinal binning problems, **ordboost
 
 Get started with continuous probabilistic regression in just a few lines of code:
 
-```python linenums=1 title="OrdBoost regression example"
+``` py linenums=1, title="OrdBoost regression example"
 import numpy as np
 
 from ordboost.models import OrdBoostRegressor

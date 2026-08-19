@@ -10,7 +10,7 @@ This page provides end-to-end examples demonstrating advanced features, custom e
 
 Use `OrdBoostClassifier` for discrete ordinal problems (like Likert survey responses or stage rankings) and score probabilistic performance via discrete CRPS.
 
-```python linenums=1 title="OrdBoost classification example"
+``` python linenums=1, title="OrdBoost classification example"
 import numpy as np
 
 from ordboost import OrdBoostClassifier, crps_score, pinball_loss
@@ -36,7 +36,7 @@ print(f"Pinball Loss (75th percentile): {p_loss_75:.4f}")
 
 Use `OrdBoostRegressor` for continuous problems and estimate prediction intervals for the outcome.
 
-```python linenums=1 title="OrdBoost regression example"
+``` python linenums=1, title="OrdBoost regression example"
 import numpy as np
 
 from ordboost.models import OrdBoostRegressor
@@ -79,7 +79,7 @@ print(f"Predicted Median: {y_pred_median[i]:.2f} [80% PI: {lower_80:.2f}, {upper
 The Probability Integral Transform (PIT) measures how well-calibrated a probabilistic regression model is.
 If predictions are properly calibrated, $U_i = F_i(y_i)$ will follow a Uniform distribution $\mathcal{U}(0, 1)$.
 
-```python linenums=1 title="Plotting the PIT histogram"
+``` python linenums=1, title="Plotting the PIT histogram"
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -118,7 +118,7 @@ plt.show()
 
 Assess prediction interval calibration and tightness across multiple confidence levels using `interval_coverage_rate` and `winkler_score`.
 
-```python linenums=1 title="Interval coverage and Winkler scores"
+``` python linenums=1, title="Interval coverage and Winkler scores"
 import numpy as np
 from ordboost import OrdBoostRegressor, QuantileBinMapper
 from ordboost.metrics import interval_coverage_rate, winkler_score
@@ -148,7 +148,7 @@ for alpha in [0.10, 0.20, 0.50]:
 
 `OrdBoostRegressor` accepts any custom mapper that inherits from `BaseBinMapper`. Below is an example of creating a custom version of the EmpiricalMeanBinMapper:
 
-```python linenums=1 title="Custom Bin Mapper example"
+``` python linenums=1, title="Custom Bin Mapper example"
 from typing import Union
 import numpy as np
 from numpy.typing import ArrayLike
