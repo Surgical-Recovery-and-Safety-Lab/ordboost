@@ -7,6 +7,9 @@ and this project adheres to Semantic Versioning ([SemVer](https://semver.org/spe
 
 ## [Unreleased]
 
+### Added
+* Github workflow to publish package on PyPI when a new released is published.
+
 ### Changed
 * Updated the README.md sections and content.
 * Updated the OrdBoostRegressor example using string mapping for the mapper creation.
