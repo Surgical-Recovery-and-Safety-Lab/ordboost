@@ -4,18 +4,9 @@ description = "Non-parametric discrete ordinal gradient boosting with probabilis
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Apache-2.0" }
-authors = [
-  { name = "Mathias Roesler", email = "mathias.roesler@auckland.ac.nz" }
-]
+authors = [{ name = "Mathias Roesler", email = "mathias.roesler@auckland.ac.nz" }]
 dynamic = ["version"]
-keywords = [
-  "calibration",
-  "gradient-boosting",
-  "machine-learning",
-  "ordinal-regression",
-  "probabilistic-forecasting",
-  "scikit-learn"
-]
+keywords = ["calibration", "gradient-boosting", "machine-learning", "ordinal-regression", "probabilistic-forecasting", "scikit-learn"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Intended Audience :: Science/Research",
@@ -36,8 +27,13 @@ dependencies = [
 dev = [
   "pytest>=7.0.0",
   "pytest-cov>=4.0.0",
-  "ruff>=0.1.0",
-  "mypy>=1.0.0",
+  "ordboost[docs]",
+]
+docs = [
+  "mkdocs>=1.5.0",
+  "mkdocs-material>=9.5.0",
+  "mkdocstrings[python]>=0.24.0",
+  "mkdocs-include-markdown-plugin",
 ]
 
 [build-system]

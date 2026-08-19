@@ -9,6 +9,16 @@ and this project adheres to Semantic Versioning ([SemVer](https://semver.org/spe
 
 ### Added
 * Github workflow to publish package on PyPI when a new released is published.
+* Example scripts for each example in the MkDocs documentation.
+* Package for including the example files directly into the docs.
+
+### Changed
+* Replaced the example code in the documentation with the example scripts.
+
+## [0.2.1] 2026-08-19
+
+### Added
+* Documentation deployed with MkDocs.
 
 ### Changed
 * Updated the README.md sections and content.
@@ -66,7 +76,8 @@ and this project adheres to Semantic Versioning ([SemVer](https://semver.org/spe
 * Unit tests
 * Github workflow to run tests on push and pull request
 
-[Unreleased]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/releases/tag/v0.1.0
