@@ -50,7 +50,7 @@ pip install ordboost
 
 ### OrdBoostClassifier
 
-``` py linenums=1, title="OrdBoostClassifier example"
+``` py linenums="1", title="OrdBoostClassifier example"
 import numpy as np
 from ordboost import OrdBoostClassifier, crps_score, pinball_loss
 
@@ -92,7 +92,7 @@ print(f"Pinball Loss (q=0.9): {p_loss:.4f}")
 
 ### OrdBoostRegressor
 
-``` python linenums=1, title="OrdBoostRegressor example"
+``` python linenums="1", title="OrdBoostRegressor example"
 import numpy as np
 
 from ordboost.models import OrdBoostRegressor
