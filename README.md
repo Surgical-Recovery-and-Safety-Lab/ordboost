@@ -50,7 +50,7 @@ pip install ordboost
 
 ### OrdBoostClassifier
 
-``` python linenums=1, title="OrdBoostClassifier example"
+``` py linenums=1, title="OrdBoostClassifier example"
 import numpy as np
 from ordboost import OrdBoostClassifier, crps_score, pinball_loss
 
