@@ -7,6 +7,9 @@ and this project adheres to Semantic Versioning ([SemVer](https://semver.org/spe
 
 ## [Unreleased]
 
+### Added
+* Documentation deployed with MkDocs.
+
 ### Changed
 * Updated the README.md sections and content.
 * Updated the OrdBoostRegressor example using string mapping for the mapper creation.
