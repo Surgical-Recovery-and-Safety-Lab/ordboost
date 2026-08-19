@@ -8,6 +8,7 @@ and this project adheres to Semantic Versioning ([SemVer](https://semver.org/spe
 ## [Unreleased]
 
 ### Added
+* Github workflow to publish package on PyPI when a new released is published.
 * Example scripts for each example in the MkDocs documentation.
 * Package for including the example files directly into the docs.
 
