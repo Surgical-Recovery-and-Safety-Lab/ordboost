@@ -198,7 +198,7 @@ class EmpiricalMeanBinMapper(BaseBinMapper):
 
         if y_binned is None:
             # Digitize continuous targets into 0-indexed bins [0, n_bins - 1]
-            binned = np.digitize(y_cont, edges[1:-1])
+            binned = np.digitize(y_cont, edges[:-1])
         else:
             binned = np.asarray(y_binned, dtype=int)
             if binned.shape != y_cont.shape:
@@ -384,7 +384,7 @@ class EmpiricalMedianBinMapper(BaseBinMapper):
 
         if y_binned is None:
             # Digitize continuous targets into 0-indexed bins [0, n_bins - 1]
-            binned = np.digitize(y_cont, edges[1:-1])
+            binned = np.digitize(y_cont, edges[:-1])
         else:
             binned = np.asarray(y_binned, dtype=int)
             if binned.shape != y_cont.shape:
@@ -590,7 +590,7 @@ class QuantileBinMapper(BaseBinMapper):
 
         if y_binned is None:
             # Digitize continuous targets into 0-indexed bins [0, n_bins - 1]
-            binned = np.digitize(y_cont, edges[1:-1])
+            binned = np.digitize(y_cont, edges[:-1])
         else:
             binned = np.asarray(y_binned, dtype=int)
             if binned.shape != y_cont.shape:
@@ -969,7 +969,7 @@ class ContinuousBinMapper(BaseBinMapper):
 
         # Digitize continuous training targets
         if y_binned is None:
-            binned = np.digitize(y_cont, edges[1:-1])
+            binned = np.digitize(y_cont, edges[:-1])
         else:
             binned = np.asarray(y_binned, dtype=int)
             if binned.shape != y_cont.shape:
@@ -979,7 +979,7 @@ class ContinuousBinMapper(BaseBinMapper):
                 )
 
         # Assign each grid point to a bin index [0, n_bins - 1]
-        grid_bins = np.digitize(self.grid_y_, edges[1:-1])
+        grid_bins = np.digitize(self.grid_y_, edges[:-1])
         # Force exact upper boundary edge to belong to final bin
         grid_bins = np.clip(grid_bins, 0, self.n_bins_ - 1)
         self.bin_indices_ = grid_bins

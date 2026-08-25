@@ -666,7 +666,7 @@ class OrdBoostRegressor(BaseEstimator, RegressorMixin):
         self.n_features_in_ = X_arr.shape[1]
 
         self.bin_edges_ = self._compute_bin_edges(y_arr)
-        y_binned = np.digitize(y_arr, self.bin_edges_[1:-1])
+        y_binned = np.digitize(y_arr, self.bin_edges_[:-1])
 
         # Fit underlying OrdBoostClassifier
         self.classifier_ = OrdBoostClassifier(
