@@ -200,7 +200,7 @@ class OrdBoostClassifier(BaseEstimator, ClassifierMixin):
             The fitted estimator instance.
 
         """
-        X_arr, y_arr = check_X_y(X, y, ensure_2d=True)
+        X_arr, y_arr = check_X_y(X, y, ensure_2d=True, ensure_all_finite=False)
         self.n_features_in_ = X_arr.shape[1]
 
         unique_classes = np.unique(y_arr)
@@ -292,7 +292,7 @@ class OrdBoostClassifier(BaseEstimator, ClassifierMixin):
 
         """
         check_is_fitted(self, attributes=["classes_", "estimators_", "n_features_in_"])
-        X_arr = check_array(X, ensure_2d=True)
+        X_arr = check_array(X, ensure_2d=True, ensure_all_finite=False)
 
         if self.estimators_ is None:
             raise NotFittedError("The estimator instance is not fitted yet.")
@@ -660,7 +660,9 @@ class OrdBoostRegressor(BaseEstimator, RegressorMixin):
             Fitted estimator instance.
 
         """
-        X_arr, y_arr = check_X_y(X, y, ensure_2d=True, dtype="numeric")
+        X_arr, y_arr = check_X_y(
+            X, y, ensure_2d=True, dtype="numeric", ensure_all_finite=False
+        )
         self.n_features_in_ = X_arr.shape[1]
 
         self.bin_edges_ = self._compute_bin_edges(y_arr)
@@ -701,7 +703,7 @@ class OrdBoostRegressor(BaseEstimator, RegressorMixin):
 
         """
         check_is_fitted(self, attributes=["bin_edges_", "classifier_", "mapper_"])
-        X_arr = check_array(X, ensure_2d=True)
+        X_arr = check_array(X, ensure_2d=True, ensure_all_finite=False)
         pmf = self.classifier_.predict_proba(X_arr)
         return self.mapper_.to_continuous_dist(pmf)
 
