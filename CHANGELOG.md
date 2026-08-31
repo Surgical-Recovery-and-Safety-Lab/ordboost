@@ -13,7 +13,12 @@ and this project adheres to Semantic Versioning ([SemVer](https://semver.org/spe
 * Package for including the example files directly into the docs.
 
 ### Changed
+* Version bumped to 0.2.2.dev0.
 * Replaced the example code in the documentation with the example scripts.
+* Allowing Nan values to be present in train and test data.
+
+### Fixed
+* Bug in the way the targets where digitised fixed to work with bin edges.
 
 ## [0.2.1] 2026-08-19
 
