@@ -585,8 +585,9 @@ class QuantileBinMapper(BaseBinMapper):
             raise ValueError("Expected 'y_continuous' to be a 1D array.")
 
         self.bin_edges_ = edges
+        self.bins = edges - 1
         self.quantiles_ = q_arr
-        self.n_bins_ = len(edges) - 1
+        self.n_bins_ = len(edges)
 
         if y_binned is None:
             # Digitize continuous targets into 0-indexed bins [0, n_bins - 1]
@@ -599,28 +600,50 @@ class QuantileBinMapper(BaseBinMapper):
                     f"does not match 'y_continuous' shape {y_cont.shape}."
                 )
 
-        grid_y = [edges[0]]
-        grid_weights = [0.0]
+        y_min = float(y_cont.min())
+        y_max = float(y_cont.max())
+
+        grid_y = [y_min - 1e-4, y_min]
+        grid_weights = [0.0, 0.0]
+
+        last_bin_has_data = np.any(binned == self.n_bins_ - 1)
+        top_bound = y_max if last_bin_has_data else edges[-1]
 
         for k in range(self.n_bins_):
             mask = binned == k
-            low, high = edges[k], edges[k + 1]
+            low = y_min if k == 0 else edges[k - 1]
+            high = top_bound if k == self.n_bins_ - 1 else edges[k]
 
             if np.any(mask):
                 sub_q = np.quantile(y_cont[mask], self.quantiles_)
                 sub_q = np.clip(sub_q, low, high)
             else:
-                # Interpolate linear fraction if bin k has no training samples
                 sub_q = low + (high - low) * self.quantiles_
 
             grid_y.extend(sub_q)
             grid_weights.extend(k + self.quantiles_)
 
+            if k == self.n_bins_ - 1 and last_bin_has_data:
+                top_mask_data = y_cont[mask]
+                frac_below_ceiling = np.mean(top_mask_data < top_bound)
+                grid_y.append(top_bound - 1e-4)
+                grid_weights.append(k + frac_below_ceiling)
+
             grid_y.append(high)
             grid_weights.append(float(k + 1))
 
-        self.grid_y_ = np.array(grid_y, dtype=float)
-        self.grid_cdf_weights_ = np.array(grid_weights, dtype=float)
+        grid_y_arr = np.array(grid_y, dtype=float)
+        grid_w_arr = np.array(grid_weights, dtype=float)
+
+        order = np.argsort(grid_y_arr, kind="stable")
+        sorted_y = grid_y_arr[order]
+        sorted_w = grid_w_arr[order]
+
+        unique_y, group_start = np.unique(sorted_y, return_index=True)
+        max_weights = np.maximum.reduceat(sorted_w, group_start)
+
+        self.grid_y_ = unique_y
+        self.grid_cdf_weights_ = max_weights
 
         return self
 
