@@ -282,19 +282,26 @@ class OrdBoostClassifier(BaseEstimator, ClassifierMixin):
         Parameters
         ----------
         X : {array-like, sparse matrix} of shape (n_samples, n_features)
-            Input features.
+            Input features. May contain NaN values, which are handled
+            natively by the underlying `HistGradientBoostingClassifier`.
 
         Returns
         -------
         np.ndarray
-            2D float array of shape (n_samples, n_classes) containing class probabilities.
+            2D float array of shape (n_samples, n_classes) containing class
+            probabilities, guaranteed non-negative and row-normalized to sum
+            to 1.0.
+
+        Raises
+        ------
+        NotFittedError
+            If called before `fit`.
+        ValueError
+            If `X`'s feature count does not match `n_features_in_`.
 
         """
         check_is_fitted(self, attributes=["classes_", "estimators_", "n_features_in_"])
         X_arr = check_array(X, ensure_2d=True, ensure_all_finite=False)
-
-        if self.estimators_ is None:
-            raise NotFittedError("The estimator instance is not fitted yet.")
 
         n_samples = X_arr.shape[0]
         n_classes = len(self.classes_)
