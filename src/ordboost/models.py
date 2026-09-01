@@ -94,8 +94,6 @@ class OrdBoostClassifier(BaseEstimator, ClassifierMixin):
         self.random_state = random_state
         self.kwargs = kwargs
 
-        self.estimators_: list[HistGradientBoostingClassifier] | None = None
-
     def get_params(self, deep: bool = True) -> dict[str, Any]:
         """Get parameters for this estimator, including dynamically passed kwargs.
 
