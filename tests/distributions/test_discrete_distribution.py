@@ -92,6 +92,21 @@ class TestInit:
         with pytest.raises(ValueError, match="read-only"):
             dist.classes[0] = 99
 
+    def test_user_pmf_is_not_read_only_after_construction(self) -> None:
+        """Test that dist.pmf cannot be mutated in place after construction."""
+        pmf = np.array([[0.5, 0.5]])
+        DiscretePredictiveDistribution(pmf=pmf, classes=np.array([0, 1]))
+        pmf[0, 0] = 0.2
+        assert pmf[0, 0] == 0.2
+
+    def test_user_classes_is_not_read_only_after_construction(self) -> None:
+        """Test that dist.classes cannot be mutated in place after construction."""
+        classes = np.array([0, 1])
+        DiscretePredictiveDistribution(pmf=np.array([[0.5, 0.5]]), classes=classes)
+
+        classes[0] = 1
+        assert classes[0] == 1
+
 
 class TestCdf:
     """Tests for DiscretePredictiveDistribution.cdf."""
