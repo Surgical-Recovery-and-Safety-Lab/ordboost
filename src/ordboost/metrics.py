@@ -13,6 +13,54 @@ from ordboost.distributions import (
 )
 
 
+def baseline_distribution(
+    y_train: ArrayLike, n_samples: int
+) -> ContinuousPredictiveDistribution:
+    """Construct a no-covariate baseline distribution.
+
+    Builds the unconditional empirical CDF of `y_train` and broadcasts it
+    identically across `n_samples` rows, representing the best achievable
+    forecast in the complete absence of covariate information -- the
+    standard reference forecast against which skill scores are computed.
+
+    Parameters
+    ----------
+    y_train : ArrayLike of shape (n_train_samples,)
+        Training targets defining the unconditional empirical distribution.
+        Should be the full, unfiltered training set, even when scoring a
+        filtered evaluation subset, so the baseline continues to represent
+        "no covariate information" rather than "no information restricted
+        to a subgroup" (see `crps_skill_score`).
+    n_samples : int
+        Number of rows to broadcast the baseline CDF across, e.g.
+        the number of samples in the evaluation set this baseline will be
+        scored against.
+
+    Returns
+    -------
+    ContinuousPredictiveDistribution
+        A distribution with `n_samples` identical rows, each equal to the
+        empirical CDF of `y_train`.
+
+    Raises
+    ------
+    ValueError
+        If `y_train` is empty, or `n_samples` is not a positive integer.
+
+    """
+    y_train_arr = np.asarray(y_train, dtype=float)
+    if y_train_arr.size == 0:
+        raise ValueError("'y_train' must not be empty.")
+    if not isinstance(n_samples, (int, np.integer)) or n_samples <= 0:
+        raise ValueError(f"'n_samples' must be a positive integer, got {n_samples}.")
+
+    grid_y = np.sort(np.unique(y_train_arr))
+    grid_cdf_row = np.array([np.mean(y_train_arr <= v) for v in grid_y])
+    grid_cdf = np.tile(grid_cdf_row, (n_samples, 1))
+
+    return ContinuousPredictiveDistribution(grid_y=grid_y, grid_cdf=grid_cdf)
+
+
 def crps_score(
     y_true: ArrayLike,
     y_dist: Union[ContinuousPredictiveDistribution, DiscretePredictiveDistribution],
