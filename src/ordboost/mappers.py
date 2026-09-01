@@ -513,7 +513,9 @@ class EmpiricalMeanBinMapper(BaseBinMapper):
 
     """
 
-    def _intra_bin_points(self, bin_data, low, high, k):
+    def _intra_bin_points(
+        self, bin_data: np.ndarray, low: float, high: float, k: int
+    ) -> tuple[np.ndarray, np.ndarray]:
         """Return one interior point at the bin's empirical mean.
 
         Parameters
@@ -577,7 +579,9 @@ class EmpiricalMedianBinMapper(BaseBinMapper):
 
     """
 
-    def _intra_bin_points(self, bin_data, low, high, k):
+    def _intra_bin_points(
+        self, bin_data: np.ndarray, low: float, high: float, k: int
+    ) -> tuple[np.ndarray, np.ndarray]:
         """Return one interior point at the bin's empirical median.
 
         Parameters
@@ -610,7 +614,7 @@ class EmpiricalMedianBinMapper(BaseBinMapper):
             frac_below = float(np.mean(bin_data <= median_val))
         return np.array([median_val]), np.array([k + frac_below])
 
-    def transform(self, pmf):
+    def transform(self, pmf: ArrayLike):
         """Map a discrete PMF matrix to continuous median point estimates.
 
         Overrides `BaseBinMapper.transform` to return the median of
