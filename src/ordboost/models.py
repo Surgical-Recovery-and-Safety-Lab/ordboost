@@ -705,15 +705,12 @@ class OrdBoostRegressor(BaseEstimator, RegressorMixin):
 
         """
         X_arr, y_arr = check_X_y(
-            X, y, ensure_2d=True, dtype="numeric", ensure_all_finite=False
+            X,
+            y,
+            ensure_2d=True,
+            dtype="numeric",
+            ensure_all_finite="allow-nan",  # type: ignore
         )
-        if not np.all(np.isfinite(y_arr)):
-            raise ValueError(
-                "'y' must not contain NaN or infinite values, even though 'X' "
-                "may contain NaN (handled natively by the underlying "
-                "HistGradientBoostingClassifier). A missing target cannot be "
-                "assigned a bin."
-            )
 
         self.n_features_in_ = X_arr.shape[1]
 
