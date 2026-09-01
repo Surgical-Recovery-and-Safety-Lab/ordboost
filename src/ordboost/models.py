@@ -373,24 +373,36 @@ class OrdBoostClassifier(BaseEstimator, ClassifierMixin):
 class OrdBoostRegressor(BaseEstimator, RegressorMixin):
     """Ordinal Gradient Boosting Regressor for continuous target outcomes.
 
-    Discretizes continuous targets into ordinal bins, fits an underlying cumulative
-    binary OrdBoostClassifier, and maps predicted probability distributions back
-    to continuous target space using a fitted bin mapper.
+    Discretizes a continuous target into ordinal bins, fits an underlying
+    cumulative binary `OrdBoostClassifier` on the binned target, and maps
+    predicted probability distributions back to continuous target space
+    using a fitted bin mapper. `OrdBoostRegressor` is the single source
+    of truth for bin edges and digitization: both the classifier and the
+    mapper are fitted against the same `bin_edges_`/`y_binned` computed
+    once in `fit`, so they cannot disagree about bin membership.
 
     Parameters
     ----------
     n_bins : int, default=20
         Number of discrete bins to construct if `bin_edges` is None.
     bin_edges : ArrayLike of shape (n_bins + 1,), optional
-        Monotonically increasing boundaries defining continuous bin intervals.
+        Monotonically increasing boundaries defining continuous bin
+        intervals. If provided, takes precedence over `n_bins`/`bin_strategy`.
     bin_strategy : {"quantile", "uniform"}, default="quantile"
-        Strategy used to define automatic bin boundaries when `bin_edges` is None.
-    mapper : {"median", "mean", "quantile", "uniform", "continuous"} or BaseBinMapper, default="median"
-        Bin mapping strategy instance or string shortcut used to convert predicted
-        PMFs back to continuous predictions.
+        Strategy used to define automatic bin boundaries when `bin_edges`
+        is None.
+    mapper : {"median", "mean", "quantile", "uniform", "continuous"}, BaseBinMapper, or None, default="median"
+        Bin mapping strategy used to convert predicted PMFs back to
+        continuous predictions. A string selects the corresponding
+        `BaseBinMapper` subclass, constructed automatically with
+        `bin_edges_` and any `mapper_kwargs`. A `BaseBinMapper` instance
+        is cloned and fitted with `bin_edges_`. `None` is equivalent to
+        `"median"`.
     mapper_kwargs : dict[str, Any] | None, default=None
-        Optional keyword arguments passed when instantiating string-shortcut
-        mappers.
+        Optional keyword arguments passed when instantiating a
+        string-shortcut mapper (e.g. `{"quantiles": (0.1, 0.5, 0.9)}` for
+        `mapper="quantile"`). Ignored if `mapper` is a `BaseBinMapper`
+        instance.
     learning_rate : float, default=0.1
         Learning rate for gradient boosting.
     max_iter : int, default=100
@@ -408,12 +420,15 @@ class OrdBoostRegressor(BaseEstimator, RegressorMixin):
     random_state : int | None, default=None
         Random state seed.
     **kwargs : dict[str, Any]
-        Additional arguments passed to underlying `HistGradientBoostingClassifier`.
+        Additional arguments passed to the underlying
+        `HistGradientBoostingClassifier` (e.g. `categorical_features`,
+        `early_stopping`).
 
     Attributes
     ----------
     bin_edges_ : np.ndarray
-        1D float array of shape (n_bins + 1,) containing resolved bin edges.
+        1D float array of shape (n_bins + 1,) containing resolved bin
+        edges, set during `fit`.
     classifier_ : OrdBoostClassifier
         Fitted underlying ordinal gradient boosting classifier.
     mapper_ : BaseBinMapper
@@ -584,20 +599,26 @@ class OrdBoostRegressor(BaseEstimator, RegressorMixin):
         return edges
 
     def _resolve_mapper(self) -> BaseBinMapper:
-        """Resolve string shortcut or clone provided mapper and assign resolved
-        bin edges.
+        """Resolve the `mapper` parameter into a fitted-ready mapper instance.
+
+        A string shortcut is instantiated as the corresponding `BaseBinMapper`
+        subclass, constructed with `bin_edges_` and any `mapper_kwargs`.
+        `None` resolves identically to `"median"`. A `BaseBinMapper` instance
+        is cloned (never mutated in place) and assigned `bin_edges_`.
 
         Returns
         -------
         BaseBinMapper
-            An un-fitted mapper instance configured with `bin_edges_`
-            ready for fitting.
+            An unfitted mapper instance with `bin_edges` set to `bin_edges_`,
+            ready to be fit by the caller.
 
         Raises
         ------
         ValueError
-            If `mapper` is an invalid string shortcut or not an instance
-            of `BaseBinMapper`.
+            If `mapper` is a string that does not match a known shortcut; if
+            `mapper` is a `BaseBinMapper` instance whose own `bin_edges` is
+            already set and does not match `bin_edges_`; or if `mapper`
+            is neither a recognized string nor a `BaseBinMapper` instance.
 
         """
         from ordboost.mappers import (
@@ -655,27 +676,49 @@ class OrdBoostRegressor(BaseEstimator, RegressorMixin):
 
         Discretizes `y` into bins using `bin_edges_`, fits the underlying
         `OrdBoostClassifier`, and fits the resolved `mapper_` strategy.
+        `OrdBoostRegressor` is the single source of truth for both bin
+        edges and digitization: `y_binned` is computed once here via
+        `BaseBinMapper._digitize` and passed explicitly to both the
+        classifier and the mapper, so the two components can never disagree
+        about which bin a sample belongs to.
 
         Parameters
         ----------
         X : ArrayLike of shape (n_samples, n_features)
-            Training feature matrix.
+            Training feature matrix. May contain NaN values, which are
+            handled natively by the underlying `HistGradientBoostingClassifier`.
         y : ArrayLike of shape (n_samples,)
-            Continuous target vector.
+            Continuous target vector. Must not contain NaN or infinite
+            values.
 
         Returns
         -------
         OrdBoostRegressor
             Fitted estimator instance.
 
+        Raises
+        ------
+        ValueError
+            If `y` contains NaN or infinite values, or if `bin_edges`/`n_bins`/
+            `bin_strategy`/`mapper` are invalid (raised by `_compute_bin_edges`
+            or `_resolve_mapper`).
+
         """
         X_arr, y_arr = check_X_y(
             X, y, ensure_2d=True, dtype="numeric", ensure_all_finite=False
         )
+        if not np.all(np.isfinite(y_arr)):
+            raise ValueError(
+                "'y' must not contain NaN or infinite values, even though 'X' "
+                "may contain NaN (handled natively by the underlying "
+                "HistGradientBoostingClassifier). A missing target cannot be "
+                "assigned a bin."
+            )
+
         self.n_features_in_ = X_arr.shape[1]
 
         self.bin_edges_ = self._compute_bin_edges(y_arr)
-        y_binned = BaseBinMapper.digitize(y_arr, self.bin_edges_, y_binned=None)
+        y_binned = BaseBinMapper._digitize(y_arr, self.bin_edges_, y_binned=None)
 
         # Fit underlying OrdBoostClassifier
         self.classifier_ = OrdBoostClassifier(
@@ -710,6 +753,11 @@ class OrdBoostRegressor(BaseEstimator, RegressorMixin):
         ContinuousPredictiveDistribution
             Predicted continuous cumulative distribution object.
 
+        Raises
+        ------
+        NotFittedError
+            If called before `fit`.
+
         """
         check_is_fitted(self, attributes=["bin_edges_", "classifier_", "mapper_"])
         X_arr = check_array(X, ensure_2d=True, ensure_all_finite=False)
@@ -732,6 +780,13 @@ class OrdBoostRegressor(BaseEstimator, RegressorMixin):
         -------
         np.ndarray
             1D float array of predicted target values.
+
+        Raises
+        ------
+        NotFittedError
+            If called before `fit` (raised by `predict_dist`).
+        ValueError
+            If `method` is not `"mean"` or `"median"`.
 
         """
         dist = self.predict_dist(X)
