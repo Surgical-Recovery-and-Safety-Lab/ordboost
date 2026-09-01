@@ -259,6 +259,56 @@ def pinball_loss(
     return float(np.mean(loss))
 
 
+def pinball_loss_skill_score(
+    y_true: ArrayLike,
+    dist_model: ContinuousPredictiveDistribution,
+    dist_baseline: ContinuousPredictiveDistribution,
+    q: float,
+    sample_weight: Union[ArrayLike, None] = None,
+) -> float:
+    """Compute the pinball loss skill score at quantile level `q`.
+
+    Defined as ``PLSS = 1 - pinball_loss(model) / pinball_loss(baseline)``,
+    both evaluated at the same quantile level `q` and against the same
+    `y_true`. Interpretation mirrors `crps_skill_score`: 0 indicates no
+    improvement over the baseline, 1 indicates a perfect forecast at that
+    quantile, negative values indicate worse-than-baseline performance.
+
+    Parameters
+    ----------
+    y_true : ArrayLike of shape (n_samples,)
+        True physical target values.
+    dist_model : ContinuousPredictiveDistribution
+        The model's predicted distribution.
+    dist_baseline : ContinuousPredictiveDistribution
+        The reference forecast distribution to compare against.
+    q : float
+        Quantile level in (0.0, 1.0) at which to evaluate both forecasts.
+    sample_weight : ArrayLike of shape (n_samples,), optional
+        Sample weights, applied identically to both pinball loss
+        computations.
+
+    Returns
+    -------
+    float
+        The pinball loss skill score at quantile `q`.
+
+    Raises
+    ------
+    ValueError
+        If `q` lies outside (0.0, 1.0), or if shapes mismatch (raised by
+        `pinball_loss`).
+
+    """
+    y_pred_model = dist_model.ppf(q)
+    y_pred_baseline = dist_baseline.ppf(q)
+    loss_model = pinball_loss(y_true, y_pred_model, q=q, sample_weight=sample_weight)
+    loss_baseline = pinball_loss(
+        y_true, y_pred_baseline, q=q, sample_weight=sample_weight
+    )
+    return 1.0 - (loss_model / loss_baseline)
+
+
 def interval_coverage_rate(
     y_true: ArrayLike,
     dist: ContinuousPredictiveDistribution,
