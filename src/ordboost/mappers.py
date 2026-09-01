@@ -296,7 +296,7 @@ class BaseBinMapper(ABC, BaseEstimator, TransformerMixin):
             high = high_bound_last if k == n_bins - 1 else edges[k + 1]
             bin_data = y_cont[mask]
 
-            if low >= high:
+            if low > high:
                 raise ValueError(
                     f"Bin {k} has an invalid range [low={low}, high={high}] after "
                     f"boundary anchoring. Check that 'y_binned' is consistent "
