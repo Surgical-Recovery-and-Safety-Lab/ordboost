@@ -3,7 +3,9 @@
 from typing import Union
 
 import numpy as np
+import xarray as xr
 from numpy.typing import ArrayLike
+from scores.probability import crps_cdf
 
 from ordboost.distributions import (
     ContinuousPredictiveDistribution,
@@ -18,10 +20,17 @@ def crps_score(
 ) -> float:
     """Compute the Continuous Ranked Probability Score (CRPS).
 
-    For discrete distributions, evaluates squared cumulative probability error
-    across threshold classes. For continuous predictive distributions,
-    evaluates integrated squared distance between predicted CDF F(y) and
-    the empirical step function I(y_true <= y) via trapezoidal integration.
+    For discrete distributions, evaluates the exact squared cumulative
+    probability error across threshold classes (a finite sum, not an
+    approximation). For continuous predictive distributions, evaluates
+    the exact integrated squared distance between the predicted CDF
+    `F(y)` and the empirical step function `I(y_true <= y)`, via
+    `scores.probability.crps_cdf`. This computes the exact integral for
+    a piecewise-linear CDF -- including correctly splitting the grid
+    segment containing `y_true` -- rather than approximating it via
+    trapezoidal integration over grid points alone, which systematically
+    under- or over-estimates depending on where `y_true` falls within a
+    segment (worse for wider bins).
 
     Parameters
     ----------
@@ -40,7 +49,9 @@ def crps_score(
     Raises
     ------
     ValueError
-        If `y_true` shape or sample count mismatches `y_dist`.
+        If `y_true` shape or sample count mismatches `y_dist`, or (for
+        discrete distributions) `y_true` contains a value not present in
+        `y_dist.classes`.
 
     """
     y_true_arr = np.asarray(y_true, dtype=float)
@@ -51,7 +62,6 @@ def crps_score(
 
     n_samples = len(y_true_arr)
 
-    # Handle ContinuousPredictiveDistribution via trapezoidal integration
     if isinstance(y_dist, ContinuousPredictiveDistribution):
         if n_samples != y_dist.grid_cdf.shape[0]:
             raise ValueError(
@@ -59,19 +69,17 @@ def crps_score(
                 f"'y_dist' has {y_dist.grid_cdf.shape[0]} samples."
             )
 
-        grid_y = y_dist.grid_y
-        grid_cdf = y_dist.grid_cdf
-
-        # Empirical step function I(y_true <= grid_y)
-        true_indicator = (y_true_arr[:, np.newaxis] <= grid_y[np.newaxis, :]).astype(
-            float
+        fcst_da = xr.DataArray(
+            y_dist.grid_cdf,
+            dims=["sample", "threshold"],
+            coords={"threshold": y_dist.grid_y},
         )
+        obs_da = xr.DataArray(y_true_arr, dims=["sample"])
 
-        # Integrated squared distance along continuous physical grid dy
-        cdf_diff_sq = (grid_cdf - true_indicator) ** 2
-        dy = np.diff(grid_y)
-        avg_sq_diff = 0.5 * (cdf_diff_sq[:, :-1] + cdf_diff_sq[:, 1:])
-        sample_crps = np.sum(avg_sq_diff * dy, axis=1)
+        result = crps_cdf(
+            fcst_da, obs_da, threshold_dim="threshold", preserve_dims=["sample"]
+        )
+        sample_crps = result.total.values
 
     else:
         # Handle Discrete PredictiveDistribution
@@ -80,18 +88,15 @@ def crps_score(
                 f"Sample count mismatch: 'y_true' has {n_samples} samples, but "
                 f"'y_dist' has {y_dist.pmf.shape[0]} samples."
             )
-
         if not set(y_true_arr).issubset(set(y_dist.classes)):
             missing_classes = set(y_true_arr) - set(y_dist.classes)
             raise ValueError(
                 f"y_true contains target values not present in y_dist.classes: "
                 f"{missing_classes}"
             )
-
         true_indicator = (
             y_true_arr[:, np.newaxis] <= y_dist.classes[np.newaxis, :]
         ).astype(float)
-
         cdf_diff_sq = (y_dist.cdf - true_indicator) ** 2
         sample_crps = np.sum(cdf_diff_sq, axis=1)
 
