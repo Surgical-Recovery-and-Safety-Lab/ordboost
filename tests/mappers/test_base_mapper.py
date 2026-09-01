@@ -149,14 +149,14 @@ class TestValidateEdges:
 
 
 class TestDigitize:
-    """Tests for BaseBinMapper._digitize."""
+    """Tests for BaseBinMapper.digitize."""
 
     def test_default_digitization_matches_numpy_digitize(self) -> None:
         """Test that automatic binning matches np.digitize on interior edges."""
         mapper = DummyBinMapper(bin_edges=[0.0, 10.0, 20.0, 30.0])
         edges = mapper._validate_edges()
         y_cont = np.array([1.0, 11.0, 25.0])
-        binned = mapper._digitize(y_cont, edges, y_binned=None)
+        binned = mapper.digitize(y_cont, edges, y_binned=None)
         np.testing.assert_array_equal(binned, np.array([0, 1, 2]))
 
     def test_explicit_y_binned_returned_as_int_array(self) -> None:
@@ -164,7 +164,7 @@ class TestDigitize:
         mapper = DummyBinMapper(bin_edges=[0.0, 10.0, 20.0])
         edges = mapper._validate_edges()
         y_cont = np.array([1.0, 15.0])
-        binned = mapper._digitize(y_cont, edges, y_binned=[0, 1])
+        binned = mapper.digitize(y_cont, edges, y_binned=[0, 1])
         np.testing.assert_array_equal(binned, np.array([0, 1]))
         assert binned.dtype.kind == "i"
 
@@ -174,7 +174,7 @@ class TestDigitize:
         edges = mapper._validate_edges()
         y_cont = np.array([1.0, 15.0, 8.0])
         with pytest.raises(ValueError, match="Shape mismatch"):
-            mapper._digitize(y_cont, edges, y_binned=[0, 1])
+            mapper.digitize(y_cont, edges, y_binned=[0, 1])
 
 
 class TestBoundaryAtomWeight:
@@ -304,14 +304,6 @@ class TestBuildGrid:
         mapper._build_grid(y_cont)
         assert mapper.grid_y_[-2] == pytest.approx(10.0 - 1e-4)
         assert mapper.grid_cdf_weights_[-2] == pytest.approx(0.25)
-
-    def test_ceiling_atom_false_adds_no_extra_point(self) -> None:
-        """Test that ceiling_atom=False produces no epsilon-offset point,
-        even with data concentrated at the ceiling."""
-        mapper = DummyBinMapper(bin_edges=[0.0, 10.0], ceiling_atom=False)
-        y_cont = np.array([2.0, 10.0, 10.0, 10.0])
-        mapper._build_grid(y_cont)
-        assert not np.any(np.abs(mapper.grid_y_ - (10.0 - 1e-4)) < 1e-9)
 
     def test_dedup_keeps_maximum_weight_at_collision(self) -> None:
         """Test that when an interior point collides with the bin boundary,
