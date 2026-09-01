@@ -754,151 +754,122 @@ class QuantileBinMapper(BaseBinMapper):
 
 
 class UniformBinMapper(BaseBinMapper):
-    """Maps discrete bin probabilities using geometric bin midpoints.
+    """Maps discrete bin probabilities using evenly-spaced uniform points.
 
-    Uses fixed geometric midpoints between bin edges to convert discrete
-    probability mass functions (PMF) into continuous point estimates and piecewise
-    linear cumulative distributions. This mapper does not require continuous
-    training targets to estimate bin statistics.
+    Refines each bin's interior under a uniform-density-within-bin
+    assumption: `n_points` interior points are placed at evenly spaced
+    fractions of the bin's width, with cumulative weights assigned at
+    those same evenly spaced fractions. With `n_points=0`, no interior
+    refinement is added at all, and the mapper reduces to a piecewise-
+    linear CDF across raw bin edges. Point placement is independant
+    of `bin_data`.
 
     Parameters
     ----------
-    bin_edges : ArrayLike of shape (n_bins + 1,) or None, default=None
-        Monotonically increasing boundaries defining continuous bin intervals.
+    bin_edges : array-like of shape (n_bins + 1,) or None, default=None
+        Monotonically increasing boundaries defining continuous bin
+        intervals.
+    n_points : int, default=1
+        Number of evenly spaced interior points to add per bin. Must be a
+        non-negative integer. With `n_points` points, each bin is split
+        into `n_points + 1` equal-width, equal-weight segments; the
+        `i`-th point (``i = 1, ..., n_points``) is placed at fraction
+        ``i / (n_points + 1)`` of the bin's width, with cumulative weight
+        offset ``k + i / (n_points + 1)``.
+    bounded_below : bool, default=True
+        See `BaseBinMapper`.
+    bounded_above : bool, default=True
+        See `BaseBinMapper`.
+    floor_atom : bool, default=False
+        See `BaseBinMapper`.
+    ceiling_atom : bool, default=False
+        See `BaseBinMapper`.
+    boundary_epsilon : float, default=1e-4
+        See `BaseBinMapper`.
 
     Attributes
     ----------
-    bin_edges_ : np.ndarray
-        1D float array of shape (n_bins + 1,) containing validated bin edges.
-    bin_midpoints_ : np.ndarray
-        1D float array of shape (n_bins,) containing geometric midpoints.
-    n_bins_ : int
-        Number of discrete bins defined by `bin_edges_`.
-
-    Methods
-    -------
-    fit(y_continuous=None, y_binned=None)
-        Compute geometric bin midpoints from bin edges.
-    transform(pmf)
-        Map discrete PMF probability matrix to continuous midpoint estimates.
-    to_continuous_dist(pmf)
-        Construct a ContinuousPredictiveDistribution from a discrete PMF matrix.
+    n_points_ : int
+        Validated copy of `n_points`, set by `_validate_intra_bin_params`
+        during `fit`.
 
     """
 
-    def __init__(self, bin_edges: Union[ArrayLike, None] = None) -> None:
-        super().__init__(bin_edges=bin_edges)
-
-    def fit(
+    def __init__(
         self,
-        y_continuous: Union[ArrayLike, None] = None,
-        y_binned: Union[ArrayLike, None] = None,
-    ) -> "UniformBinMapper":
-        """Compute geometric bin midpoints from bin edges.
-
-        Parameters
-        ----------
-        y_continuous : ArrayLike of shape (n_samples,), optional
-            Ignored. Retained for API compatibility with `BaseBinMapper`.
-        y_binned : ArrayLike of shape (n_samples,), optional
-            Ignored. Retained for API compatibility with `BaseBinMapper`.
-
-        Returns
-        -------
-        UniformBinMapper
-            Fitted mapper instance.
-
-        Raises
-        ------
-        ValueError
-            If `bin_edges` has fewer than 2 edges, is not 1D, or is not
-            strictly monotonically increasing.
-
-        """
-        edges = self._validate_edges()
-        self.bin_edges_ = edges
-        self.n_bins_ = len(edges) - 1
-        self.bin_midpoints_ = (edges[:-1] + edges[1:]) / 2.0
-        return self
-
-    def transform(self, pmf: ArrayLike) -> np.ndarray:
-        """Map discrete PMF probability matrix to continuous expected values.
-
-        Parameters
-        ----------
-        pmf : ArrayLike of shape (n_samples, n_bins)
-            Probability mass function matrix where rows sum to 1.0.
-
-        Returns
-        -------
-        np.ndarray
-            1D float array of shape (n_samples,) containing continuous
-            point estimates weighted by geometric bin midpoints.
-
-        Raises
-        ------
-        NotFittedError
-            If the mapper instance has not been fitted prior to calling transform.
-        ValueError
-            If `pmf` is not a 2D array or column count does not match `n_bins_`.
-
-        """
-        check_is_fitted(self, attributes=["bin_edges_", "bin_midpoints_", "n_bins_"])
-        pmf_arr = np.asarray(pmf, dtype=float)
-
-        if pmf_arr.ndim != 2:
-            raise ValueError("Expected 'pmf' to be a 2D array.")
-        if pmf_arr.shape[1] != self.n_bins_:
-            raise ValueError(
-                f"PMF column dimension ({pmf_arr.shape[1]}) does not match "
-                f"fitted bin count ({self.n_bins_})."
-            )
-
-        return np.dot(pmf_arr, self.bin_midpoints_)
-
-    def to_continuous_dist(self, pmf: ArrayLike) -> ContinuousPredictiveDistribution:
-        """Construct a ContinuousPredictiveDistribution from a discrete PMF matrix.
-
-        Parameters
-        ----------
-        pmf : ArrayLike of shape (n_samples, n_bins)
-            Discrete probability mass function matrix where rows sum to 1.0.
-
-        Returns
-        -------
-        ContinuousPredictiveDistribution
-            Continuous distribution evaluated over physical target grid.
-
-        Raises
-        ------
-        NotFittedError
-            If the mapper instance has not been fitted prior to calling.
-        ValueError
-            If `pmf` is not a 2D array or column count does not match `n_bins_`.
-
-        """
-        check_is_fitted(self, attributes=["bin_edges_", "bin_midpoints_", "n_bins_"])
-        pmf_arr = np.asarray(pmf, dtype=float)
-
-        if pmf_arr.ndim != 2:
-            raise ValueError("Expected 'pmf' to be a 2D array.")
-        if pmf_arr.shape[1] != self.n_bins_:
-            raise ValueError(
-                f"PMF column dimension ({pmf_arr.shape[1]}) does not match "
-                f"fitted bin count ({self.n_bins_})."
-            )
-
-        cum_pmf = np.cumsum(pmf_arr, axis=1)
-        grid_cdf = np.hstack(
-            [
-                np.zeros((pmf_arr.shape[0], 1), dtype=float),
-                cum_pmf,
-            ]
+        bin_edges: Union[ArrayLike, None] = None,
+        n_points: int = 1,
+        bounded_below: bool = True,
+        bounded_above: bool = True,
+        floor_atom: bool = False,
+        ceiling_atom: bool = False,
+        boundary_epsilon: float = 1e-4,
+    ) -> None:
+        super().__init__(
+            bin_edges=bin_edges,
+            bounded_below=bounded_below,
+            bounded_above=bounded_above,
+            floor_atom=floor_atom,
+            ceiling_atom=ceiling_atom,
+            boundary_epsilon=boundary_epsilon,
         )
+        self.n_points = n_points
 
-        return ContinuousPredictiveDistribution(
-            grid_y=self.bin_edges_, grid_cdf=grid_cdf
-        )
+    def _validate_intra_bin_params(self) -> None:
+        """Validate `n_points` and set the fitted `n_points_` attribute.
+
+        Raises
+        ------
+        TypeError
+            If `n_points` is not an integer.
+        ValueError
+            If `n_points` is negative.
+
+        """
+        if isinstance(self.n_points, bool) or not isinstance(
+            self.n_points, (int, np.integer)
+        ):
+            raise TypeError(
+                f"Expected 'n_points' to be an int, got {type(self.n_points).__name__}."
+            )
+        if self.n_points < 0:
+            raise ValueError(f"'n_points' must be non-negative, got {self.n_points}.")
+        self.n_points_ = int(self.n_points)
+
+    def _intra_bin_points(
+        self, bin_data: np.ndarray, low: float, high: float, k: int
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Return `n_points_` evenly spaced interior points for one bin.
+
+        Parameters
+        ----------
+        bin_data : ndarray of shape (n_bin_samples,)
+            Continuous training targets belonging to bin `k`. Unused --
+            point placement is independent of the bin's actual data under
+            the uniform-density assumption.
+        low : float
+            The effective lower boundary of bin `k`.
+        high : float
+            The effective upper boundary of bin `k`.
+        k : int
+            The 0-indexed bin number.
+
+        Returns
+        -------
+        points : ndarray of shape (n_points_,)
+            Evenly spaced target values within ``(low, high)``. Empty if
+            `n_points_` is 0.
+        weights : ndarray of shape (n_points_,)
+            Evenly spaced cumulative weights within ``(k, k + 1)``,
+            offset into bin-index units. Empty if `n_points_` is 0.
+
+        """
+        if self.n_points_ == 0:
+            return np.array([]), np.array([])
+        fractions = np.arange(1, self.n_points_ + 1, dtype=float) / (self.n_points_ + 1)
+        points = low + fractions * (high - low)
+        weights = k + fractions
+        return points, weights
 
 
 class ContinuousBinMapper(BaseBinMapper):
