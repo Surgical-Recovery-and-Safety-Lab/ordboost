@@ -29,13 +29,82 @@ class PredictiveDistribution(ABC):
 
     @abstractmethod
     def mean(self) -> np.ndarray:
-        """Calculate the expected value for each sample."""
-        pass
+        """Calculate the expected value for each sample.
+
+        Returns
+        -------
+        np.ndarray
+            1D array of shape (n_samples,) containing expected values in
+            physical target units.
+
+        Notes
+        -----
+        Implementations must ensure the underlying distribution's total
+        probability mass is fully accounted for (e.g. PMF rows summing to
+        1.0, or a CDF grid spanning exactly [0.0, 1.0]) for this to return
+        an unbiased estimate. Concrete subclasses enforce this at
+        construction time rather than here.
+
+        """
+        ...
 
     @abstractmethod
-    def ppf(self, q: Union[float, np.ndarray]) -> np.ndarray:
-        """Percent Point Function (inverse CDF / quantile calculation)."""
-        pass
+    def _ppf(self, q_arr: np.ndarray) -> np.ndarray:
+        """Compute the percent point function for a validated quantile array.
+
+        Called by the public `ppf` after `q` has already been validated to
+        be a scalar or 1D array with values in [0.0, 1.0]. Subclasses
+        should not re-validate `q_arr`.
+
+        Parameters
+        ----------
+        q_arr : np.ndarray
+            Validated quantile level(s): either a 0D (scalar) or 1D array,
+            with all values in [0.0, 1.0].
+
+        Returns
+        -------
+        np.ndarray
+            If `q_arr` is 0D, returns a 1D array of shape (n_samples,).
+            If `q_arr` is 1D of length `n_quantiles`, returns a 2D array
+            of shape (n_samples, n_quantiles).
+
+        """
+        ...
+
+    def ppf(self, q: Union[float, ArrayLike]) -> np.ndarray:
+        """Percent Point Function (inverse CDF / quantile calculation).
+
+        Validates `q` once, then delegates to the subclass's `_ppf`.
+
+        Parameters
+        ----------
+        q : float | ArrayLike
+            Quantile level(s). Can be a single scalar or a 1D array-like
+            of quantiles, with all values in [0.0, 1.0].
+
+        Returns
+        -------
+        np.ndarray
+            If `q` is a scalar, returns a 1D array of shape (n_samples,).
+            If `q` is a 1D array of length `n_quantiles`, returns a 2D
+            array of shape (n_samples, n_quantiles).
+
+        Raises
+        ------
+        ValueError
+            If `q` is not a scalar or 1D array, or if any value in `q`
+            lies outside [0.0, 1.0].
+
+        """
+        q_arr = np.asarray(q, dtype=float)
+        if q_arr.ndim not in (0, 1):
+            raise ValueError(
+                f"Expected 'q' to be a scalar or 1D array, got a {q_arr.ndim}D array."
+            )
+        if np.any((q_arr < 0.0) | (q_arr > 1.0)):
+            raise ValueError("All quantiles in 'q' must lie within [0.0, 1.0].")
+        return self._ppf(q_arr)
 
     def median(self) -> np.ndarray:
         """Calculate the 50th percentile (median) prediction for each sample.
@@ -74,6 +143,30 @@ class PredictiveDistribution(ABC):
         upper_q = 1.0 - (alpha / 2.0)
         bounds = self.ppf(np.array([lower_q, upper_q]))
         return bounds[:, 0], bounds[:, 1]
+
+    @staticmethod
+    def _validate_strictly_ascending(name: str, arr: np.ndarray) -> None:
+        """Validate that a 1D array is strictly increasing.
+
+        Shared by subclasses whose interpolation/lookup logic (e.g.
+        `np.interp`, `np.argmax` over a CDF) requires an ordered axis to
+        behave correctly -- silently, not with an error, if violated.
+
+        Parameters
+        ----------
+        name : str
+            Name of the array being validated, used in the error message.
+        arr : np.ndarray
+            1D array to validate.
+
+        Raises
+        ------
+        ValueError
+            If `arr` is not strictly increasing.
+
+        """
+        if np.any(np.diff(arr) <= 0.0):
+            raise ValueError(f"'{name}' must be strictly ascending.")
 
 
 class DiscretePredictiveDistribution(PredictiveDistribution):
