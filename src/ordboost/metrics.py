@@ -159,6 +159,48 @@ def crps_score(
     return float(np.mean(sample_crps))
 
 
+def crps_skill_score(
+    y_true: ArrayLike,
+    dist_model: ContinuousPredictiveDistribution,
+    dist_baseline: ContinuousPredictiveDistribution,
+    sample_weight: Union[ArrayLike, None] = None,
+) -> float:
+    """Compute the CRPS skill score relative to a reference forecast.
+
+    Defined as ``CRPSS = 1 - CRPS(model) / CRPS(baseline)``. A value of 0
+    indicates no improvement over the baseline, 1 indicates a perfect
+    forecast, and negative values indicate performance worse than the
+    baseline. `dist_baseline` is typically constructed via
+    `baseline_distribution`, but may be any reference forecast.
+
+    Parameters
+    ----------
+    y_true : ArrayLike of shape (n_samples,)
+        True physical target values.
+    dist_model : ContinuousPredictiveDistribution
+        The model's predicted distribution.
+    dist_baseline : ContinuousPredictiveDistribution
+        The reference forecast distribution to compare against.
+    sample_weight : ArrayLike of shape (n_samples,), optional
+        Sample weights, applied identically to both CRPS computations.
+
+    Returns
+    -------
+    float
+        The CRPS skill score.
+
+    Raises
+    ------
+    ValueError
+        If `y_true`'s sample count mismatches `dist_model` or
+        `dist_baseline` (raised by `crps_score`).
+
+    """
+    crps_model = crps_score(y_true, dist_model, sample_weight=sample_weight)
+    crps_baseline = crps_score(y_true, dist_baseline, sample_weight=sample_weight)
+    return 1.0 - (crps_model / crps_baseline)
+
+
 def pinball_loss(
     y_true: ArrayLike,
     y_pred_q: ArrayLike,
