@@ -265,15 +265,16 @@ class OrdBoostClassifier(BaseEstimator, ClassifierMixin):
         if self.monotonicity == "running_max":
             return np.maximum.accumulate(cum_probs, axis=1)
 
-        from sklearn.isotonic import IsotonicRegression
+        from sklearn.isotonic import isotonic_regression
 
         n_samples, n_edges = cum_probs.shape
         monotonic_probs = np.empty_like(cum_probs)
         x_grid = np.arange(n_edges)
 
         for i in range(n_samples):
-            iso = IsotonicRegression(y_min=0.0, y_max=1.0, increasing=True)
-            monotonic_probs[i] = iso.fit_transform(x_grid, cum_probs[i])
+            monotonic_probs[i] = isotonic_regression(
+                cum_probs[i], y_min=0.0, y_max=1.0, increasing=True
+            )
 
         return monotonic_probs
 
