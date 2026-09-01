@@ -1,4 +1,4 @@
-"""Base interfaces for bin-to-continuous target mappers."""
+"""Base interfaces and implementations for bin-to-continuous target mappers."""
 
 from abc import ABC, abstractmethod
 from typing import Union
@@ -13,51 +13,134 @@ from ordboost.distributions import ContinuousPredictiveDistribution
 class BaseBinMapper(ABC, BaseEstimator, TransformerMixin):
     """Abstract base class for all bin-to-continuous target mappers.
 
+    A bin mapper converts a discrete probability mass function (PMF) over
+    ordinal bins into a continuous predictive cumulative distribution
+    function (CDF). Subclasses define how each bin's interior is refined
+    into additional grid points by implementing `_intra_bin_points` and
+    `fit`; `to_continuous_dist` and `transform` are shared and operate
+    identically for every subclass once a grid has been fitted, so that a
+    subclass's point estimate can never disagree with its full predicted
+    distribution.
+
     Parameters
     ----------
     bin_edges : array-like of shape (n_bins + 1,) or None, default=None
-        Monotonically increasing boundaries defining continuous bin intervals.
+        Monotonically increasing boundaries defining continuous bin
+        intervals.
+    bounded_below : bool, default=True
+        If True, the outcome's support is asserted to have a true lower
+        limit, and the predictive CDF is forced to 0 there. The anchor
+        value is the observed training minimum when bin 0 contains
+        training data, and `bin_edges[0]` otherwise. If False,
+        `bin_edges[0]` is treated as an arbitrary or nominal lower bound
+        (e.g. an open-ended first bin) rather than the outcome's true
+        support boundary; the CDF is still forced to 0 there so the grid
+        remains well-defined, but this should be understood as a
+        truncation rather than a claim about the outcome itself.
+    bounded_above : bool, default=True
+        Mirrors `bounded_below` for the upper boundary of the final bin.
+    floor_atom : bool, default=False
+        If True, the lower boundary of bin 0 is modelled as a probability
+        atom: the empirical fraction of bin 0's own training data at or
+        below that boundary is estimated and assigned as that grid point's
+        cumulative weight, producing an approximated discontinuity there.
+        Requires `bounded_below=True`.
+    ceiling_atom : bool, default=False
+        Mirrors `floor_atom` for the upper boundary of the final bin.
+        Requires `bounded_above=True`.
+    boundary_epsilon : float, default=1e-4
+        Offset used to place two grid points strictly outside/inside the
+        outcome's support: the forced CDF=0 anchor at
+        ``y_min - boundary_epsilon``, and, when `ceiling_atom` is True,
+        the near-ceiling atom point at ``y_max - boundary_epsilon``. Must
+        be small relative to the narrowest bin width in `bin_edges`;
+        values comparable to or larger than a bin's width can place this
+        offset point outside its intended bin or collide with adjacent
+        grid points.
 
     Attributes
     ----------
-    bin_edges_ : array-like
-        1D float array of shape (n_bins + 1,) containing validated bin edges.
+    bin_edges_ : ndarray of shape (n_bins + 1,)
+        Validated bin edges, set during `fit`.
     n_bins_ : int
         Number of discrete bins defined by `bin_edges_`.
+    grid_y_ : ndarray of shape (n_grid_points,)
+        Fitted sub-grid target values, in ascending order.
+    grid_cdf_weights_ : ndarray of shape (n_grid_points,)
+        Fitted sub-grid weights in bin-index units, aligned with
+        `grid_y_`. A weight of ``k + f`` denotes that a fraction ``f`` of
+        bin ``k``'s probability mass lies at or below the corresponding
+        grid point.
 
     Methods
     -------
     fit(y_continuous, y_binned=None)
-        Compute empirical bin statistics from continuous training targets.
+        Fit the mapper's grid to continuous training targets.
     transform(pmf)
-        Map discrete PMF probability matrix to continuous expected values.
+        Map a discrete PMF matrix to continuous point estimates.
     to_continuous_dist(pmf)
         Construct a ContinuousPredictiveDistribution from a discrete PMF matrix.
 
     """
 
-    def __init__(self, bin_edges: Union[ArrayLike, None] = None) -> None:
+    def __init__(
+        self,
+        bin_edges: Union[ArrayLike, None] = None,
+        bounded_below: bool = True,
+        bounded_above: bool = True,
+        floor_atom: bool = False,
+        ceiling_atom: bool = False,
+        boundary_epsilon: float = 1e-4,
+    ) -> None:
         self.bin_edges = bin_edges
+        self.bounded_below = bounded_below
+        self.bounded_above = bounded_above
+        self.floor_atom = floor_atom
+        self.ceiling_atom = ceiling_atom
+        self.boundary_epsilon = boundary_epsilon
 
-    def _validate_edges(self) -> np.ndarray:
-        """Validate and return bin edges array.
-
-        Returns
-        -------
-        np.ndarray
-            1D float array containing validated bin edges.
+    def _validate_atom_flags(self) -> None:
+        """Validate consistency between the atom and boundedness flags.
 
         Raises
         ------
         ValueError
-            If `bin_edges` has fewer than 2 edges, is not 1D, is not
-            strictly monotonically increasing or is None.
+            If `floor_atom` is True while `bounded_below` is False, or if
+            `ceiling_atom` is True while `bounded_above` is False. An atom
+            cannot be placed at a boundary that is not itself asserted to
+            be the outcome's true support limit.
+
+        """
+        if self.floor_atom and not self.bounded_below:
+            raise ValueError(
+                "'floor_atom=True' requires 'bounded_below=True': an atom "
+                "cannot be placed at a boundary that isn't asserted to be "
+                "the true lower limit of the outcome's support."
+            )
+        if self.ceiling_atom and not self.bounded_above:
+            raise ValueError(
+                "'ceiling_atom=True' requires 'bounded_above=True': an atom "
+                "cannot be placed at a boundary that isn't asserted to be "
+                "the true upper limit of the outcome's support."
+            )
+
+    def _validate_edges(self) -> np.ndarray:
+        """Validate and return the mapper's bin edges.
+
+        Returns
+        -------
+        ndarray of shape (n_bins + 1,)
+            Validated bin edges as a 1D float array.
+
+        Raises
+        ------
+        ValueError
+            If `bin_edges` is None, is not 1D, has fewer than 2 edges, or
+            is not strictly monotonically increasing.
 
         """
         if self.bin_edges is None:
-            raise ValueError(
-                "'bin_edges' must be set on the mapper prior to fitting.",
-            )
+            raise ValueError("'bin_edges' must be set on the mapper prior to fitting.")
         edges = np.asarray(self.bin_edges, dtype=float)
         if edges.ndim != 1 or len(edges) < 2:
             raise ValueError(
@@ -67,62 +150,339 @@ class BaseBinMapper(ABC, BaseEstimator, TransformerMixin):
             raise ValueError("'bin_edges' must be strictly monotonically increasing.")
         return edges
 
-    @abstractmethod
-    def fit(
+    def _validate_intra_bin_params(self) -> None:
+        """Validate and set any parameters `_intra_bin_points` depends on.
+
+        Called by `fit` before the grid is constructed. The base
+        implementation is a no-op; subclasses that require setup ahead of
+        grid construction (e.g. validating quantile levels) should
+        override this method rather than `fit` itself.
+
+        """
+        return None
+
+    def _digitize(
+        self,
+        y_cont: np.ndarray,
+        edges: np.ndarray,
+        y_binned: Union[ArrayLike, None],
+    ) -> np.ndarray:
+        """Assign each continuous target to a 0-indexed discrete bin.
+
+        Parameters
+        ----------
+        y_cont : ndarray of shape (n_samples,)
+            Continuous target values.
+        edges : ndarray of shape (n_bins + 1,)
+            Validated bin edges.
+        y_binned : array-like of shape (n_samples,) or None
+            Pre-computed 0-indexed bin labels. If None, labels are derived
+            from `edges` via `numpy.digitize`.
+
+        Returns
+        -------
+        ndarray of shape (n_samples,)
+            Integer bin label for each sample.
+
+        Raises
+        ------
+        ValueError
+            If `y_binned` is provided and its shape does not match
+            `y_cont`.
+
+        """
+        if y_binned is None:
+            return np.digitize(y_cont, edges[1:-1])
+        binned = np.asarray(y_binned, dtype=int)
+        if binned.shape != y_cont.shape:
+            raise ValueError(
+                f"Shape mismatch: 'y_binned' shape {binned.shape} "
+                f"does not match 'y_continuous' shape {y_cont.shape}."
+            )
+        return binned
+
+    @staticmethod
+    def _boundary_atom_weight(
+        bin_data: np.ndarray, boundary: float, side: str
+    ) -> float:
+        """Compute the empirical fraction of a bin's data at a boundary.
+
+        Parameters
+        ----------
+        bin_data : ndarray of shape (n_bin_samples,)
+            Continuous training targets belonging to the bin being
+            evaluated.
+        boundary : float
+            The boundary value to compare against.
+        side : {'lower', 'upper'}
+            If ``'lower'``, returns the fraction of `bin_data` at or below
+            `boundary` (inclusive comparison, for a floor boundary). If
+            ``'upper'``, returns the fraction strictly below `boundary`
+            (exclusive comparison, for a ceiling boundary, so the boundary
+            value itself is reserved for the forced weight of 1.0 at that
+            point).
+
+        Returns
+        -------
+        float
+            The empirical fraction in [0.0, 1.0]. Returns 1.0 if
+            `bin_data` is empty, since an empty bin has no interior mass
+            to distinguish from its own boundary.
+
+        """
+        if len(bin_data) == 0:
+            return 1.0
+        if side == "upper":
+            return float(np.mean(bin_data < boundary))
+        return float(np.mean(bin_data <= boundary))
+
+    def _build_grid(
         self, y_continuous: ArrayLike, y_binned: Union[ArrayLike, None] = None
-    ) -> "BaseBinMapper":
-        """Compute empirical bin statistics from continuous training targets.
+    ) -> None:
+        """Construct the fitted CDF grid shared by all mapper subclasses.
+
+        Performs bin assignment, boundary anchoring governed by
+        `bounded_below`/`bounded_above`, optional boundary-atom points
+        governed by `floor_atom`/`ceiling_atom`, per-bin interior points
+        from `_intra_bin_points`, and deduplication of coincident grid
+        values (keeping the maximum weight at each unique `y`, so that a
+        forced boundary weight is never silently discarded in favour of an
+        earlier, lower-weight interior point at the same value).
 
         Parameters
         ----------
         y_continuous : array-like of shape (n_samples,)
-            Unbinned continuous target values (e.g., exact physical units).
+            Unbinned continuous target values.
         y_binned : array-like of shape (n_samples,), optional
-            Corresponding 0-indexed discrete bin labels. If None, labels are
-            computed automatically from `bin_edges`.
+            Corresponding 0-indexed discrete bin labels. If None, labels
+            are computed automatically from `bin_edges`.
+
+        Raises
+        ------
+        ValueError
+            If `bin_edges` is invalid, `y_continuous` is not 1D, or
+            `y_binned` shape mismatches (raised by `_validate_edges` or
+            `_digitize`); if `floor_atom`/`ceiling_atom` are set without
+            their corresponding `bounded_*` flag (raised by
+            `_validate_atom_flags`); or if boundary anchoring together with
+            a supplied `y_binned` produces an invalid (non-positive-width)
+            bin range -- typically indicating that `y_binned` assigns a
+            sample to a bin whose own nominal edges cannot contain that
+            sample's value.
+
+        """
+        self._validate_atom_flags()
+        edges = self._validate_edges()
+        y_cont = np.asarray(y_continuous, dtype=float)
+        if y_cont.ndim != 1:
+            raise ValueError("Expected 'y_continuous' to be a 1D array.")
+
+        n_bins = len(edges) - 1
+        binned = self._digitize(y_cont, edges, y_binned)
+
+        y_min, y_max = float(y_cont.min()), float(y_cont.max())
+        first_has_data = np.any(binned == 0)
+        last_has_data = np.any(binned == n_bins - 1)
+
+        low_bound_0 = y_min if (self.bounded_below and first_has_data) else edges[0]
+        high_bound_last = y_max if (self.bounded_above and last_has_data) else edges[-1]
+
+        grid_y = [low_bound_0 - self.boundary_epsilon]
+        grid_w = [0.0]
+
+        for k in range(n_bins):
+            mask = binned == k
+            low = low_bound_0 if k == 0 else edges[k]
+            high = high_bound_last if k == n_bins - 1 else edges[k + 1]
+            bin_data = y_cont[mask]
+
+            if low >= high:
+                raise ValueError(
+                    f"Bin {k} has an invalid range [low={low}, high={high}] after "
+                    f"boundary anchoring. Check that 'y_binned' is consistent "
+                    f"with 'y_continuous' and 'bin_edges'."
+                )
+
+            if k == 0:
+                frac_at_or_below = (
+                    self._boundary_atom_weight(bin_data, low, side="lower")
+                    if self.floor_atom
+                    else 0.0
+                )
+                grid_y.append(low)
+                grid_w.append(k + frac_at_or_below)
+
+            pts, weights = self._intra_bin_points(bin_data, low, high, k)
+            grid_y.extend(pts)
+            grid_w.extend(weights)
+
+            if k == n_bins - 1 and self.ceiling_atom and last_has_data:
+                frac_below = self._boundary_atom_weight(bin_data, high, side="upper")
+                grid_y.append(high - self.boundary_epsilon)
+                grid_w.append(k + frac_below)
+
+            grid_y.append(high)
+            grid_w.append(float(k + 1))
+
+        grid_y_arr = np.array(grid_y, dtype=float)
+        grid_w_arr = np.array(grid_w, dtype=float)
+        order = np.argsort(grid_y_arr, kind="stable")
+        sorted_y, sorted_w = grid_y_arr[order], grid_w_arr[order]
+        unique_y, group_start = np.unique(sorted_y, return_index=True)
+        max_w = np.maximum.reduceat(sorted_w, group_start)
+
+        # Create fitted attributes
+        self.bin_edges_ = edges
+        self.n_bins_ = n_bins
+        self.grid_y_ = unique_y
+        self.grid_cdf_weights_ = max_w
+
+    @abstractmethod
+    def _intra_bin_points(
+        self, bin_data: np.ndarray, low: float, high: float, k: int
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Compute a subclass's interior grid points for one bin.
+
+        Parameters
+        ----------
+        bin_data : ndarray of shape (n_bin_samples,)
+            Continuous training targets belonging to bin `k`.
+        low : float
+            The effective lower boundary of bin `k` (equal to
+            `bin_edges_[k]` for interior bins, or the anchored floor for
+            bin 0).
+        high : float
+            The effective upper boundary of bin `k` (equal to
+            `bin_edges_[k + 1]` for interior bins, or the anchored ceiling
+            for the final bin).
+        k : int
+            The 0-indexed bin number.
+
+        Returns
+        -------
+        points : ndarray
+            Interior target values to add to the grid for this bin.
+            May be empty for mappers that add no intra-bin refinement.
+        weights : ndarray
+            Cumulative weights aligned with `points`, in bin-index units
+            (i.e. in the range ``[k, k + 1]``).
+
+        """
+        ...
+
+    def fit(
+        self, y_continuous: ArrayLike, y_binned: Union[ArrayLike, None] = None
+    ) -> "BaseBinMapper":
+        """Fit the mapper's grid to continuous training targets.
+
+        Shared across all subclasses: validates any subclass-specific
+        parameters via `_validate_intra_bin_params`, then constructs the
+        grid via `_build_grid`, which sets `bin_edges_`, `n_bins_`,
+        `grid_y_`, and `grid_cdf_weights_`.
+
+        Parameters
+        ----------
+        y_continuous : array-like of shape (n_samples,)
+            Unbinned continuous target values (e.g. exact physical units).
+        y_binned : array-like of shape (n_samples,), optional
+            Corresponding 0-indexed discrete bin labels. If None, labels
+            are computed automatically from `bin_edges`.
 
         Returns
         -------
         BaseBinMapper
-            Fitted mapper instance.
+            The fitted mapper instance.
+
+        Raises
+        ------
+        ValueError
+            Raised by `_validate_intra_bin_params` or `_build_grid` for
+            invalid parameters, edges, or input shapes.
 
         """
-        pass
+        self._validate_intra_bin_params()
+        self._build_grid(y_continuous, y_binned)
+        return self
 
-    @abstractmethod
-    def transform(self, pmf: ArrayLike) -> np.ndarray:
-        """Map discrete PMF probability matrix to continuous expected values.
-
-        Parameters
-        ----------
-        pmf : array-like of shape (n_samples, n_bins)
-            Probability mass function matrix where rows sum to 1.0.
-
-        Returns
-        -------
-        np.ndarray
-            1D float array of shape (n_samples,) containing continuous
-            expected target values.
-
-        """
-        pass
-
-    @abstractmethod
     def to_continuous_dist(self, pmf: ArrayLike) -> ContinuousPredictiveDistribution:
-        """Construct a ContinuousPredictiveDistribution from a discrete PMF matrix.
+        """Construct a continuous predictive distribution from a PMF.
+
+        Interpolates each sample's cumulative PMF against the fitted
+        `grid_cdf_weights_` to obtain the predicted CDF value at each
+        `grid_y_` point. Shared across all subclasses; behaviour is fully
+        determined by the fitted grid, so this always agrees with
+        `transform`.
 
         Parameters
         ----------
         pmf : array-like of shape (n_samples, n_bins)
-            Discrete probability mass function matrix where rows sum to 1.0.
+            Discrete probability mass function matrix where rows sum to
+            1.0.
 
         Returns
         -------
         ContinuousPredictiveDistribution
-            Continuous distribution evaluated over physical target grid.
+            Continuous distribution evaluated over the fitted `grid_y_`.
+
+        Raises
+        ------
+        NotFittedError
+            If the mapper instance has not been fitted prior to calling.
+        ValueError
+            If `pmf` is not a 2D array or its column count does not match
+            `n_bins_`.
 
         """
-        pass
+        check_is_fitted(
+            self, attributes=["bin_edges_", "grid_y_", "grid_cdf_weights_", "n_bins_"]
+        )
+        pmf_arr = np.asarray(pmf, dtype=float)
+        if pmf_arr.ndim != 2:
+            raise ValueError("Expected 'pmf' to be a 2D array.")
+        if pmf_arr.shape[1] != self.n_bins_:
+            raise ValueError(
+                f"PMF column dimension ({pmf_arr.shape[1]}) does not match "
+                f"fitted bin count ({self.n_bins_})."
+            )
+
+        n_samples = pmf_arr.shape[0]
+        cum_pmf = np.hstack(
+            [np.zeros((n_samples, 1), dtype=float), np.cumsum(pmf_arr, axis=1)]
+        )
+        x_grid = np.arange(self.n_bins_ + 1, dtype=float)
+
+        grid_cdf = np.empty((n_samples, len(self.grid_y_)), dtype=float)
+        for i in range(n_samples):
+            grid_cdf[i] = np.interp(self.grid_cdf_weights_, x_grid, cum_pmf[i])
+
+        return ContinuousPredictiveDistribution(grid_y=self.grid_y_, grid_cdf=grid_cdf)
+
+    def transform(self, pmf: ArrayLike) -> np.ndarray:
+        """Map a discrete PMF matrix to continuous point estimates.
+
+        Parameters
+        ----------
+        pmf : array-like of shape (n_samples, n_bins)
+            Discrete probability mass function matrix where rows sum to
+            1.0.
+
+        Returns
+        -------
+        ndarray of shape (n_samples,)
+            Continuous point estimates, taken as the mean of
+            `to_continuous_dist(pmf)`. Subclasses may override this to
+            return a different point estimate (e.g. the median).
+
+        Raises
+        ------
+        NotFittedError
+            If the mapper instance has not been fitted prior to calling.
+        ValueError
+            If `pmf` is not a 2D array or its column count does not match
+            `n_bins_`.
+
+        """
+        return self.to_continuous_dist(pmf).mean()
 
 
 class EmpiricalMeanBinMapper(BaseBinMapper):
