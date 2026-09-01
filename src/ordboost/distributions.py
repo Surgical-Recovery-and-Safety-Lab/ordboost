@@ -173,29 +173,32 @@ class DiscretePredictiveDistribution(PredictiveDistribution):
     """Encapsulates a discrete Probability Mass Function (PMF) matrix.
 
     Provides vectorized utilities for computing cumulative distribution
-    functions (CDF), percent point functions (quantiles/PPF), expected values,
-    medians, and prediction intervals across samples.
+    functions (CDF), percent point functions (quantiles/PPF), expected
+    values, medians, and prediction intervals across samples.
 
     Parameters
     ----------
     pmf : np.ndarray
         A 2D float array of shape (n_samples, n_classes) representing the
-        predicted probability for each discrete target class. Values along
-        each row must sum to 1.0.
+        predicted probability for each discrete target class. Values
+        along each row must sum to 1.0 (within floating-point tolerance).
     classes : np.ndarray
-        A 1D array of shape (n_classes,) representing the physical ordinal
-        class labels in strictly ascending order.
+        A 1D array of shape (n_classes,) representing the physical
+        ordinal class labels in strictly ascending order.
 
     Attributes
     ----------
     pmf : np.ndarray
-        A 2D float array of shape (n_samples, n_classes) containing predicted
-        class probabilities.
+        A 2D float array of shape (n_samples, n_classes) containing
+        validated predicted class probabilities as a read-only object.
     classes : np.ndarray
-        A 1D array of shape (n_classes,) containing the ordinal class labels.
+        A 1D array of shape (n_classes,) containing the validated ordinal
+        class labels as a read-only object.
     cdf : np.ndarray
-        A 2D float array of shape (n_samples, n_classes) containing cumulative
-        probabilities computed from `pmf`.
+        A 2D float array of shape (n_samples, n_classes) containing
+        cumulative probabilities computed from `pmf`. The final column is
+        forced to exactly 1.0 to guard against floating-point PMF row
+        sums fractionally below 1.0.
 
     Methods
     -------
@@ -211,10 +214,14 @@ class DiscretePredictiveDistribution(PredictiveDistribution):
     Raises
     ------
     ValueError
-        If `pmf` is not a 2D array, `classes` is not a 1D array, or the
-        number of columns in `pmf` does not match the length of `classes`.
+        If `pmf` is not a 2D array, `classes` is not a 1D array, the
+        number of columns in `pmf` does not match the length of
+        `classes`, `classes` is not strictly ascending, or any row of
+        `pmf` does not sum to 1.0 within tolerance.
 
     """
+
+    _PMF_SUM_ATOL = 1e-6
 
     def __init__(self, pmf: np.ndarray, classes: np.ndarray) -> None:
         pmf_arr = np.asarray(pmf, dtype=float)
@@ -235,9 +242,38 @@ class DiscretePredictiveDistribution(PredictiveDistribution):
                 f"and classes array length ({classes_arr.shape[0]})."
             )
 
+        self._validate_strictly_ascending("classes", classes_arr.astype(float))
+        self._validate_normalized_pmf(pmf_arr)
+
         self.pmf = pmf_arr
         self.classes = classes_arr
+        self.pmf.flags.writeable = False  # Convert to read-only
+        self.classes.flags.writeable = False  # Convert to read-only
         self._cdf: np.ndarray | None = None
+
+    @staticmethod
+    def _validate_normalized_pmf(pmf: np.ndarray, atol: float = _PMF_SUM_ATOL) -> None:
+        """Validate that every row of a PMF matrix sums to 1.0.
+
+        Parameters
+        ----------
+        pmf : np.ndarray
+            2D array of shape (n_samples, n_classes).
+        atol : float, default=1e-6
+            Absolute tolerance for the row-sum comparison.
+
+        Raises
+        ------
+        ValueError
+            If any row of `pmf` does not sum to 1.0 within `atol`.
+
+        """
+        row_sums = pmf.sum(axis=1)
+        if not np.allclose(row_sums, 1.0, atol=atol):
+            raise ValueError(
+                "Every row of 'pmf' must sum to 1.0 within tolerance; "
+                f"got sums ranging [{row_sums.min():.6f}, {row_sums.max():.6f}]."
+            )
 
     @property
     def cdf(self) -> np.ndarray:
@@ -246,11 +282,17 @@ class DiscretePredictiveDistribution(PredictiveDistribution):
         Returns
         -------
         np.ndarray
-            2D array of shape (n_samples, n_classes) containing cumulative probabilities.
+            2D array of shape (n_samples, n_classes) containing cumulative
+            probabilities. The final column is forced to exactly 1.0 to
+            guard against `ppf(1.0)` silently returning the wrong (lowest)
+            class if a PMF row's floating-point sum falls fractionally
+            short of 1.0.
 
         """
         if self._cdf is None:
-            self._cdf = np.clip(np.cumsum(self.pmf, axis=1), 0.0, 1.0)
+            cum = np.clip(np.cumsum(self.pmf, axis=1), 0.0, 1.0)
+            cum[:, -1] = 1.0
+            self._cdf = cum
         return self._cdf
 
     def mean(self) -> np.ndarray:
@@ -265,34 +307,20 @@ class DiscretePredictiveDistribution(PredictiveDistribution):
         """
         return np.dot(self.pmf, self.classes)
 
-    def ppf(self, q: Union[float, np.ndarray]) -> np.ndarray:
-        """Percent Point Function (inverse CDF / quantile calculation).
-
-        Maps quantile probabilities back to discrete physical class levels.
+    def _ppf(self, q_arr: np.ndarray) -> np.ndarray:
+        """Map validated quantile probabilities to discrete class levels.
 
         Parameters
         ----------
-        q : float | np.ndarray
-            Quantile level(s) in the range [0.0, 1.0]. Can be a single scalar
-            or an array of quantiles.
+        q_arr : np.ndarray
+            Validated quantile level(s); see `PredictiveDistribution._ppf`.
 
         Returns
         -------
         np.ndarray
-            If `q` is a scalar, returns a 1D array of shape (n_samples,).
-            If `q` is 1D array of length `n_quantiles`, returns a 2D array of
-            shape (n_samples, n_quantiles).
-
-        Raises
-        ------
-        ValueError
-            If any quantile in `q` lies outside [0.0, 1.0].
+            See `PredictiveDistribution._ppf`.
 
         """
-        q_arr = np.asarray(q, dtype=float)
-        if np.any((q_arr < 0.0) | (q_arr > 1.0)):
-            raise ValueError("All quantiles in 'q' must lie within [0.0, 1.0].")
-
         cdf = self.cdf
         if q_arr.ndim == 0:
             indices = np.argmax(cdf >= q_arr, axis=1)
