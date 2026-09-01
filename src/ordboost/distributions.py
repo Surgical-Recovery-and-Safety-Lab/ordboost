@@ -245,8 +245,8 @@ class DiscretePredictiveDistribution(PredictiveDistribution):
         self._validate_strictly_ascending("classes", classes_arr.astype(float))
         self._validate_normalized_pmf(pmf_arr)
 
-        self.pmf = pmf_arr
-        self.classes = classes_arr
+        self.pmf = pmf_arr.copy()
+        self.classes = classes_arr.copy()
         self.pmf.flags.writeable = False  # Convert to read-only
         self.classes.flags.writeable = False  # Convert to read-only
         self._cdf: np.ndarray | None = None
