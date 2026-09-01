@@ -161,8 +161,8 @@ class BaseBinMapper(ABC, BaseEstimator, TransformerMixin):
         """
         return None
 
-    def _digitize(
-        self,
+    @staticmethod
+    def digitize(
         y_cont: np.ndarray,
         edges: np.ndarray,
         y_binned: Union[ArrayLike, None],
@@ -278,7 +278,7 @@ class BaseBinMapper(ABC, BaseEstimator, TransformerMixin):
             raise ValueError("Expected 'y_continuous' to be a 1D array.")
 
         n_bins = len(edges) - 1
-        binned = self._digitize(y_cont, edges, y_binned)
+        binned = self.digitize(y_cont, edges, y_binned)
 
         y_min, y_max = float(y_cont.min()), float(y_cont.max())
         first_has_data = np.any(binned == 0)
