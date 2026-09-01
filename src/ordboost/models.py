@@ -185,20 +185,35 @@ class OrdBoostClassifier(BaseEstimator, ClassifierMixin):
     def fit(self, X: ArrayLike, y: ArrayLike) -> "OrdBoostClassifier":
         """Fit the ordinal gradient boosting model on training data.
 
+        Trains one binary `HistGradientBoostingClassifier` per cumulative
+        edge threshold `P(Y <= c_k)` for `k = 0, ..., n_classes - 2`, then
+        stores the fitted edge estimators for later monotonicity enforcement
+        and PMF construction in `predict_proba`.
+
         Parameters
         ----------
-        X : {array-like, sparse matrix} of shape (n_samples, n_features)
-            Training vector data.
+        X : array-like of shape (n_samples, n_features)
+            Training vector data. May contain NaN values, which are handled
+            natively by the underlying `HistGradientBoostingClassifier`.
         y : array-like of shape (n_samples,)
-            Target values (ordinal class labels).
+            Target values (ordinal class labels). Must contain at least 2
+            unique values.
 
         Returns
         -------
         OrdBoostClassifier
             The fitted estimator instance.
 
+        Raises
+        ------
+        ValueError
+            If `y` contains fewer than 2 unique classes, or if
+            `monotonicity` is not `"running_max"` or `"isotonic"`.
+
         """
-        X_arr, y_arr = check_X_y(X, y, ensure_2d=True, ensure_all_finite=False)
+        X_arr, y_arr = check_X_y(
+            X, y, ensure_2d=True, ensure_all_finite=False, accept_sparse=False
+        )
         self.n_features_in_ = X_arr.shape[1]
 
         unique_classes = np.unique(y_arr)
@@ -276,12 +291,12 @@ class OrdBoostClassifier(BaseEstimator, ClassifierMixin):
 
         return monotonic_probs
 
-    def predict_proba(self, X: Any) -> np.ndarray:
+    def predict_proba(self, X: ArrayLike) -> np.ndarray:
         """Predict probability mass function (PMF) for each sample.
 
         Parameters
         ----------
-        X : {array-like, sparse matrix} of shape (n_samples, n_features)
+        X : array-like of shape (n_samples, n_features)
             Input features. May contain NaN values, which are handled
             natively by the underlying `HistGradientBoostingClassifier`.
 
@@ -330,17 +345,27 @@ class OrdBoostClassifier(BaseEstimator, ClassifierMixin):
         return pmf
 
     def predict_dist(self, X: ArrayLike) -> DiscretePredictiveDistribution:
-        """Predict probability distribution wrapped in a `DiscretePredictiveDistribution`.
+        """Predict probability distribution wrapped in a
+        `DiscretePredictiveDistribution`.
 
         Parameters
         ----------
-        X : {array-like, sparse matrix} of shape (n_samples, n_features)
+        X : array-like of shape (n_samples, n_features)
             Input features.
 
         Returns
         -------
         DiscretePredictiveDistribution
             Distribution object encapsulating predicted PMFs and class labels.
+
+        Raises
+        ------
+        NotFittedError
+            If called before `fit` (raised by `predict_proba`).
+        ValueError
+            If `X`'s feature count does not match `n_features_in_` (raised
+            by `predict_proba`).
+
         """
         pmf = self.predict_proba(X)
         return DiscretePredictiveDistribution(pmf=pmf, classes=self.classes_)
@@ -352,7 +377,7 @@ class OrdBoostClassifier(BaseEstimator, ClassifierMixin):
 
         Parameters
         ----------
-        X : {array-like, sparse matrix} of shape (n_samples, n_features)
+        X : array-like of shape (n_samples, n_features)
             Input features.
         method : {"median", "mean"}, default="median"
             Point prediction strategy:
@@ -363,6 +388,14 @@ class OrdBoostClassifier(BaseEstimator, ClassifierMixin):
         -------
         np.ndarray
             1D array of predicted values in physical target units.
+
+        Raises
+        ------
+        NotFittedError
+            If called before `fit` (raised by `predict_dist`).
+        ValueError
+            If `X`'s feature count does not match `n_features_in_` (raised
+            by `predict_dist`), or if `method` is not `"median"` or `"mean"`.
 
         """
         dist = self.predict_dist(X)
@@ -716,6 +749,7 @@ class OrdBoostRegressor(BaseEstimator, RegressorMixin):
             ensure_2d=True,
             dtype="numeric",
             ensure_all_finite="allow-nan",  # type: ignore
+            accept_sparse=False,
         )
 
         self.n_features_in_ = X_arr.shape[1]
