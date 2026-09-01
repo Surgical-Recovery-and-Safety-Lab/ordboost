@@ -678,7 +678,7 @@ class OrdBoostRegressor(BaseEstimator, RegressorMixin):
         `OrdBoostClassifier`, and fits the resolved `mapper_` strategy.
         `OrdBoostRegressor` is the single source of truth for both bin
         edges and digitization: `y_binned` is computed once here via
-        `BaseBinMapper._digitize` and passed explicitly to both the
+        `BaseBinMapper.digitize` and passed explicitly to both the
         classifier and the mapper, so the two components can never disagree
         about which bin a sample belongs to.
 
@@ -718,7 +718,7 @@ class OrdBoostRegressor(BaseEstimator, RegressorMixin):
         self.n_features_in_ = X_arr.shape[1]
 
         self.bin_edges_ = self._compute_bin_edges(y_arr)
-        y_binned = BaseBinMapper._digitize(y_arr, self.bin_edges_, y_binned=None)
+        y_binned = BaseBinMapper.digitize(y_arr, self.bin_edges_, y_binned=None)
 
         # Fit underlying OrdBoostClassifier
         self.classifier_ = OrdBoostClassifier(
