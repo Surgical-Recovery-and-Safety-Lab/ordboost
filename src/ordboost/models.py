@@ -631,6 +631,15 @@ class OrdBoostRegressor(BaseEstimator, RegressorMixin):
             mapper_cls = mapper_map[self.mapper]
             mapper_obj = mapper_cls(bin_edges=self.bin_edges_, **extra_kwargs)
         elif isinstance(self.mapper, BaseBinMapper):
+            if self.mapper.bin_edges is not None:
+                supplied_edges = np.asarray(self.mapper.bin_edges, dtype=float)
+                if not np.array_equal(supplied_edges, self.bin_edges_):
+                    raise ValueError(
+                        "The mapper instance passed to 'mapper' already has "
+                        "'bin_edges' set, and they do not match the bin edges. "
+                        "Construct the mapper without 'bin_edges' to have it "
+                        "set automatically, or pass edges that match."
+                    )
             mapper_obj = cast(BaseBinMapper, clone(self.mapper))
             mapper_obj.bin_edges = self.bin_edges_
         else:
