@@ -390,6 +390,15 @@ class TestBuildGrid:
         with pytest.raises(ValueError, match="invalid range"):
             mapper._build_grid(y_cont, y_binned=np.array([0]))
 
+    def test_zero_width_bin_does_not_raise(self) -> None:
+        """Test that low == high (a genuinely degenerate, not inverted, bin)
+        is permitted and resolves via max-weight dedup, distinguishing this
+        from the strictly-invalid low > high case."""
+        mapper = DummyBinMapper(bin_edges=[10.0, 11.0])
+        mapper._build_grid(np.array([10.0, 10.0]))
+        idx = np.searchsorted(mapper.grid_y_, 10.0)
+        assert mapper.grid_cdf_weights_[idx] == pytest.approx(1.0)
+
 
 class TestFit:
     """Tests for BaseBinMapper.fit."""
