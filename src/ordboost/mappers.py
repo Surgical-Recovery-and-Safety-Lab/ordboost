@@ -647,40 +647,36 @@ class EmpiricalMedianBinMapper(BaseBinMapper):
 class QuantileBinMapper(BaseBinMapper):
     """Maps discrete bin probabilities using intra-bin empirical quantiles.
 
-    Fits intra-bin empirical quantiles from continuous training targets to build
-    a fine-grained sub-grid. Constructing a continuous distribution on this grid
-    allows for smoother cumulative distribution function (CDF) curves and more
-    accurate continuous quantile predictions in wide or skewed bins.
+    Refines each bin's interior using several fixed quantile levels
+    computed on that bin's own training data, with each point's weight
+    assumed equal to its quantile level (e.g. a bin's own empirical 25th
+    percentile is assumed to sit at 25% into that bin's probability
+    mass).
 
     Parameters
     ----------
-    bin_edges : ArrayLike of shape (n_bins + 1,) or None, default=None
-        Monotonically increasing boundaries defining continuous bin intervals.
-    quantiles : ArrayLike of shape (n_quantiles,), default=(0.25, 0.50, 0.75)
-        Intra-bin quantile levels strictly in the range (0.0, 1.0) used to
-        construct the fine-grained continuous grid.
+    bin_edges : array-like of shape (n_bins + 1,) or None, default=None
+        Monotonically increasing boundaries defining continuous bin
+        intervals.
+    quantiles : array-like of shape (n_quantiles,), default=(0.25, 0.50, 0.75)
+        Intra-bin quantile levels, strictly within (0.0, 1.0), used to
+        construct interior grid points for every bin.
+    bounded_below : bool, default=True
+        See `BaseBinMapper`.
+    bounded_above : bool, default=True
+        See `BaseBinMapper`.
+    floor_atom : bool, default=False
+        See `BaseBinMapper`.
+    ceiling_atom : bool, default=False
+        See `BaseBinMapper`.
+    boundary_epsilon : float, default=1e-4
+        See `BaseBinMapper`.
 
     Attributes
     ----------
-    bin_edges_ : np.ndarray
-        1D float array of shape (n_bins + 1,) containing validated bin edges.
-    quantiles_ : np.ndarray
-        1D float array containing validated intra-bin quantile levels.
-    grid_y_ : np.ndarray
-        1D float array containing sub-grid target values in ascending order.
-    grid_cdf_weights_ : np.ndarray
-        1D float array containing sub-grid weights along bin threshold indices.
-    n_bins_ : int
-        Number of discrete bins defined by `bin_edges_`.
-
-    Methods
-    -------
-    fit(y_continuous, y_binned=None)
-        Compute intra-bin empirical quantiles from continuous training targets.
-    transform(pmf)
-        Map discrete PMF probability matrix to continuous expected values.
-    to_continuous_dist(pmf)
-        Construct a ContinuousPredictiveDistribution over the fitted sub-grid.
+    quantiles_ : ndarray of shape (n_quantiles,)
+        Validated, sorted quantile levels, set by `_validate_intra_bin_params`
+        during `fit`.
 
     """
 
@@ -688,196 +684,73 @@ class QuantileBinMapper(BaseBinMapper):
         self,
         bin_edges: Union[ArrayLike, None] = None,
         quantiles: ArrayLike = (0.25, 0.50, 0.75),
+        bounded_below: bool = True,
+        bounded_above: bool = True,
+        floor_atom: bool = False,
+        ceiling_atom: bool = False,
+        boundary_epsilon: float = 1e-4,
     ) -> None:
-        super().__init__(bin_edges=bin_edges)
+        super().__init__(
+            bin_edges=bin_edges,
+            bounded_below=bounded_below,
+            bounded_above=bounded_above,
+            floor_atom=floor_atom,
+            ceiling_atom=ceiling_atom,
+            boundary_epsilon=boundary_epsilon,
+        )
         self.quantiles = quantiles
 
-    def fit(
-        self,
-        y_continuous: ArrayLike,
-        y_binned: Union[ArrayLike, None] = None,
-    ) -> "QuantileBinMapper":
-        """Compute intra-bin empirical quantiles from continuous training targets.
-
-        Parameters
-        ----------
-        y_continuous : ArrayLike of shape (n_samples,)
-            Unbinned continuous target values (e.g., exact physical units).
-        y_binned : ArrayLike of shape (n_samples,), optional
-            Corresponding 0-indexed discrete bin labels. If None, labels are
-            computed automatically from `bin_edges`.
-
-        Returns
-        -------
-        QuantileBinMapper
-            Fitted mapper instance.
+    def _validate_intra_bin_params(self) -> None:
+        """Validate `quantiles` and set the fitted `quantiles_` attribute.
 
         Raises
         ------
         ValueError
-            If `bin_edges` is invalid, `quantiles` lie outside (0, 1),
-            `y_continuous` is not 1D, or `y_binned` shape mismatches.
+            If `quantiles` is empty, not 1D, or contains values outside
+            the open interval (0.0, 1.0).
 
         """
-        edges = self._validate_edges()
         q_arr = np.sort(np.asarray(self.quantiles, dtype=float))
-
         if q_arr.ndim != 1 or len(q_arr) == 0:
             raise ValueError("Expected 'quantiles' to be a non-empty 1D array-like.")
         if np.any((q_arr <= 0.0) | (q_arr >= 1.0)):
             raise ValueError(
                 "All intra-bin quantiles must lie strictly within (0.0, 1.0)."
             )
-
-        y_cont = np.asarray(y_continuous, dtype=float)
-        if y_cont.ndim != 1:
-            raise ValueError("Expected 'y_continuous' to be a 1D array.")
-
-        self.bin_edges_ = edges
-        self.bins = edges - 1
         self.quantiles_ = q_arr
-        self.n_bins_ = len(edges)
 
-        if y_binned is None:
-            # Digitize continuous targets into 0-indexed bins [0, n_bins - 1]
-            binned = np.digitize(y_cont, edges[:-1])
+    def _intra_bin_points(
+        self, bin_data: np.ndarray, low: float, high: float, k: int
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Return interior points at each fitted quantile level.
+
+        Parameters
+        ----------
+        bin_data : ndarray of shape (n_bin_samples,)
+            Continuous training targets belonging to bin `k`.
+        low : float
+            The effective lower boundary of bin `k`.
+        high : float
+            The effective upper boundary of bin `k`.
+        k : int
+            The 0-indexed bin number.
+
+        Returns
+        -------
+        points : ndarray of shape (n_quantiles,)
+            The bin's empirical values at each level in `quantiles_`,
+            clipped to ``[low, high]``. Falls back to linear interpolation
+            between `low` and `high` at each quantile level if `bin_data`
+            is empty.
+        weights : ndarray of shape (n_quantiles,)
+            `quantiles_` offset into bin-index units (``k + quantiles_``).
+
+        """
+        if len(bin_data) == 0:
+            pts = low + (high - low) * self.quantiles_
         else:
-            binned = np.asarray(y_binned, dtype=int)
-            if binned.shape != y_cont.shape:
-                raise ValueError(
-                    f"Shape mismatch: 'y_binned' shape {binned.shape} "
-                    f"does not match 'y_continuous' shape {y_cont.shape}."
-                )
-
-        y_min = float(y_cont.min())
-        y_max = float(y_cont.max())
-
-        grid_y = [y_min - 1e-4, y_min]
-        grid_weights = [0.0, 0.0]
-
-        last_bin_has_data = np.any(binned == self.n_bins_ - 1)
-        top_bound = y_max if last_bin_has_data else edges[-1]
-
-        for k in range(self.n_bins_):
-            mask = binned == k
-            low = y_min if k == 0 else edges[k - 1]
-            high = top_bound if k == self.n_bins_ - 1 else edges[k]
-
-            if np.any(mask):
-                sub_q = np.quantile(y_cont[mask], self.quantiles_)
-                sub_q = np.clip(sub_q, low, high)
-            else:
-                sub_q = low + (high - low) * self.quantiles_
-
-            grid_y.extend(sub_q)
-            grid_weights.extend(k + self.quantiles_)
-
-            if k == self.n_bins_ - 1 and last_bin_has_data:
-                top_mask_data = y_cont[mask]
-                frac_below_ceiling = np.mean(top_mask_data < top_bound)
-                grid_y.append(top_bound - 1e-4)
-                grid_weights.append(k + frac_below_ceiling)
-
-            grid_y.append(high)
-            grid_weights.append(float(k + 1))
-
-        grid_y_arr = np.array(grid_y, dtype=float)
-        grid_w_arr = np.array(grid_weights, dtype=float)
-
-        order = np.argsort(grid_y_arr, kind="stable")
-        sorted_y = grid_y_arr[order]
-        sorted_w = grid_w_arr[order]
-
-        unique_y, group_start = np.unique(sorted_y, return_index=True)
-        max_weights = np.maximum.reduceat(sorted_w, group_start)
-
-        self.grid_y_ = unique_y
-        self.grid_cdf_weights_ = max_weights
-
-        return self
-
-    def transform(self, pmf: ArrayLike) -> np.ndarray:
-        """Map discrete PMF probability matrix to continuous expected values.
-
-        Parameters
-        ----------
-        pmf : ArrayLike of shape (n_samples, n_bins)
-            Probability mass function matrix where rows sum to 1.0.
-
-        Returns
-        -------
-        np.ndarray
-            1D float array of shape (n_samples,) containing continuous
-            expected target values evaluated over the fitted sub-grid.
-
-        Raises
-        ------
-        NotFittedError
-            If the mapper instance has not been fitted prior to calling transform.
-        ValueError
-            If `pmf` is not a 2D array or column count does not match `n_bins_`.
-
-        """
-        dist = self.to_continuous_dist(pmf)
-        return dist.mean()
-
-    def to_continuous_dist(self, pmf: ArrayLike) -> ContinuousPredictiveDistribution:
-        """Construct a ContinuousPredictiveDistribution over the fitted sub-grid.
-
-        Parameters
-        ----------
-        pmf : ArrayLike of shape (n_samples, n_bins)
-            Discrete probability mass function matrix where rows sum to 1.0.
-
-        Returns
-        -------
-        ContinuousPredictiveDistribution
-            Continuous distribution evaluated over sub-grid `grid_y_`.
-
-        Raises
-        ------
-        NotFittedError
-            If the mapper instance has not been fitted prior to calling.
-        ValueError
-            If `pmf` is not a 2D array or column count does not match `n_bins_`.
-
-        """
-        check_is_fitted(
-            self,
-            attributes=[
-                "bin_edges_",
-                "quantiles_",
-                "grid_y_",
-                "grid_cdf_weights_",
-                "n_bins_",
-            ],
-        )
-        pmf_arr = np.asarray(pmf, dtype=float)
-
-        if pmf_arr.ndim != 2:
-            raise ValueError("Expected 'pmf' to be a 2D array.")
-        if pmf_arr.shape[1] != self.n_bins_:
-            raise ValueError(
-                f"PMF column dimension ({pmf_arr.shape[1]}) does not match "
-                f"fitted bin count ({self.n_bins_})."
-            )
-
-        n_samples = pmf_arr.shape[0]
-        cum_pmf = np.hstack(
-            [
-                np.zeros((n_samples, 1), dtype=float),
-                np.cumsum(pmf_arr, axis=1),
-            ]
-        )
-
-        x_grid = np.arange(self.n_bins_ + 1, dtype=float)
-        n_grid = len(self.grid_y_)
-        grid_cdf = np.empty((n_samples, n_grid), dtype=float)
-
-        for i in range(n_samples):
-            grid_cdf[i] = np.interp(self.grid_cdf_weights_, x_grid, cum_pmf[i])
-
-        return ContinuousPredictiveDistribution(grid_y=self.grid_y_, grid_cdf=grid_cdf)
+            pts = np.clip(np.quantile(bin_data, self.quantiles_), low, high)
+        return pts, k + self.quantiles_
 
 
 class UniformBinMapper(BaseBinMapper):
