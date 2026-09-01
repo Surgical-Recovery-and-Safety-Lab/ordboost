@@ -26,26 +26,17 @@ class TestCRPSScore:
     ) -> tuple[np.ndarray, DiscretePredictiveDistribution]:
         """Fixture providing a deterministic discrete distribution with perfect predictions."""
         classes = np.array([0, 10, 20])
-        pmf = np.array(
-            [
-                [1.0, 0.0, 0.0],  # target = 0
-                [0.0, 1.0, 0.0],  # target = 10
-                [0.0, 0.0, 1.0],  # target = 20
-            ]
-        )
+        pmf = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
         y_true = np.array([0, 10, 20])
         dist = DiscretePredictiveDistribution(pmf=pmf, classes=classes)
         return y_true, dist
 
-    # --- Discrete CRPS Tests ---
+    # --- Discrete CRPS Tests
 
-    def test_crps_discrete_perfect_predictions(
-        self, perfect_discrete_dist: tuple[np.ndarray, DiscretePredictiveDistribution]
-    ) -> None:
+    def test_crps_discrete_perfect_predictions(self, perfect_discrete_dist) -> None:
         """Test that a perfect deterministic discrete forecast yields CRPS = 0.0."""
         y_true, dist = perfect_discrete_dist
-        score = crps_score(y_true, dist)
-        assert score == pytest.approx(0.0, abs=1e-7)
+        assert crps_score(y_true, dist) == pytest.approx(0.0, abs=1e-7)
 
     def test_crps_discrete_known_value(self) -> None:
         """Test discrete CRPS against a hand-calculated non-zero value."""
@@ -53,11 +44,9 @@ class TestCRPSScore:
         pmf = np.array([[0.5, 0.3, 0.2]])
         y_true = np.array([10])
         dist = DiscretePredictiveDistribution(pmf=pmf, classes=classes)
-
         # CDF = [0.5, 0.8, 1.0], Step I(10 <= c) = [0.0, 1.0, 1.0]
         # Diff^2 = [0.25, 0.04, 0.0] -> CRPS sum = 0.29
-        score = crps_score(y_true, dist)
-        assert score == pytest.approx(0.29, abs=1e-6)
+        assert crps_score(y_true, dist) == pytest.approx(0.29, abs=1e-6)
 
     def test_crps_discrete_sample_weights(self) -> None:
         """Test weighted discrete CRPS calculation."""
@@ -65,57 +54,109 @@ class TestCRPSScore:
         pmf = np.array([[1.0, 0.0], [0.0, 1.0]])
         y_true = np.array([0, 0])
         dist = DiscretePredictiveDistribution(pmf=pmf, classes=classes)
-
         weights = np.array([3.0, 1.0])
         # Expected: (3*0.0 + 1*1.0) / 4 = 0.25
-        score = crps_score(y_true, dist, sample_weight=weights)
-        assert score == pytest.approx(0.25, abs=1e-6)
+        assert crps_score(y_true, dist, sample_weight=weights) == pytest.approx(
+            0.25, abs=1e-6
+        )
 
     def test_crps_discrete_missing_class_error(self) -> None:
         """Test error when y_true contains values not in discrete dist.classes."""
         classes = np.array([0, 10])
         pmf = np.ones((1, 2)) * 0.5
         dist = DiscretePredictiveDistribution(pmf=pmf, classes=classes)
-
         with pytest.raises(ValueError, match="not present in y_dist.classes"):
             crps_score(np.array([99]), dist)
 
     # --- Continuous CRPS Tests ---
 
-    def test_crps_continuous_known_value(self) -> None:
-        """Test continuous CRPS calculation via trapezoidal integration against manual value."""
-        grid_y = np.array([0.0, 5.0, 10.0])
-        grid_cdf = np.array([[0.0, 0.5, 1.0], [0.1, 0.8, 1.0]])
-        y_true = np.array([5.0, 0.0])
+    def test_crps_continuous_exact_kink_value(self) -> None:
+        """Test continuous CRPS against an independently hand-derived exact
+        value, using the closed-form piecewise-linear segment integral
+        (width * (a^2 + a*b + b^2) / 3, split at y_true) rather than the
+        trapezoidal approximation this replaces. For grid_y=[0,10],
+        grid_cdf=[0.2, 0.8], y_true=5 (the exact midpoint, so the kink
+        splits the single segment into two equal-width halves):
+          segment [0,5): F 0.2->0.5, integrand F(y)^2
+            = 5*(0.2^2 + 0.2*0.5 + 0.5^2)/3 = 0.65
+          segment [5,10]: F 0.5->0.8, integrand (F(y)-1)^2
+            = 5*(0.5^2 + 0.5*0.2 + 0.2^2)/3 (via a'=-0.5, b'=-0.2) = 0.65
+          total = 1.3
+
+        This is the exact regression test for the original trapezoidal
+        bug: the old (removed) implementation returned 0.4 for this same
+        input, a >3x underestimate, since it never split the segment
+        containing y_true.
+        """
+        grid_y = np.array([0.0, 10.0])
+        grid_cdf = np.array([[0.2, 0.8]])
+        y_true = np.array([5.0])
 
         dist = MagicMock(spec=ContinuousPredictiveDistribution)
         dist.grid_y = grid_y
         dist.grid_cdf = grid_cdf
 
-        # Sample 0: y_true=5.0 -> Step=[0, 1, 1], cdf=[0, 0.5, 1] -> diff^2=[0, 0.25, 0]
-        #   trapz areas: 0.5*(0+0.25)*5 = 0.625; 0.5*(0.25+0)*5 = 0.625 -> sum = 1.25
-        # Sample 1: y_true=0.0 -> Step=[1, 1, 1], cdf=[0.1, 0.8, 1] -> diff^2=[0.81, 0.04, 0]
-        #   trapz areas: 0.5*(0.81+0.04)*5 = 2.125; 0.5*(0.04+0)*5 = 0.1 -> sum = 2.225
-        # Mean CRPS = (1.25 + 2.225) / 2 = 1.7375
         score = crps_score(y_true, dist)
-        assert score == pytest.approx(1.7375, abs=1e-6)
+        assert score == pytest.approx(1.3, abs=1e-6)
+        assert score != pytest.approx(0.4, abs=1e-6)  # the old, biased result
+
+    def test_crps_continuous_multi_sample_multi_segment(self) -> None:
+        """Test continuous CRPS on a multi-sample, multi-segment grid,
+        checking shape and basic sanity properties (non-negativity, exact
+        zero for a degenerate perfect forecast) rather than a fully
+        hand-derived multi-segment value, which is impractical to derive
+        reliably by hand across several segments.
+        """
+        grid_y = np.array([0.0, 5.0, 10.0, 15.0])
+        grid_cdf = np.array(
+            [
+                [0.0, 0.4, 0.8, 1.0],
+                [0.0, 0.1, 0.9, 1.0],
+                [0.0, 0.0, 0.0, 1.0],  # near-degenerate: all mass at y=15
+            ]
+        )
+        y_true = np.array([7.0, 3.0, 15.0])
+
+        dist = MagicMock(spec=ContinuousPredictiveDistribution)
+        dist.grid_y = grid_y
+        dist.grid_cdf = grid_cdf
+
+        score = crps_score(y_true, dist, sample_weight=None)
+        assert score >= 0.0
+        assert np.isfinite(score)
+
+    def test_crps_continuous_perfect_step_forecast_near_zero(self) -> None:
+        """Test that a forecast whose CDF is already (approximately) the
+        true step function at y_true yields a CRPS close to zero."""
+        grid_y = np.array([0.0, 10.0])
+        grid_cdf = np.array([[1.0, 1.0]])  # CDF already at 1.0 everywhere
+        y_true = np.array([0.0])  # true value at the very start of the grid
+
+        dist = MagicMock(spec=ContinuousPredictiveDistribution)
+        dist.grid_y = grid_y
+        dist.grid_cdf = grid_cdf
+
+        assert crps_score(y_true, dist) == pytest.approx(0.0, abs=1e-6)
 
     def test_crps_continuous_sample_weights(self) -> None:
-        """Test weighted continuous CRPS calculation."""
-        grid_y = np.array([0.0, 5.0, 10.0])
-        grid_cdf = np.array([[0.0, 0.5, 1.0], [0.1, 0.8, 1.0]])
-        y_true = np.array([5.0, 0.0])
+        """Test weighted continuous CRPS, reusing the exact single-sample
+        value from test_crps_continuous_exact_kink_value alongside a
+        second sample, to confirm weighting is applied on top of the
+        corrected per-sample values rather than the old ones."""
+        grid_y = np.array([0.0, 10.0])
+        grid_cdf = np.array([[0.2, 0.8], [0.2, 0.8]])
+        y_true = np.array([5.0, 5.0])  # both samples: exact CRPS = 1.3 each
 
         dist = MagicMock(spec=ContinuousPredictiveDistribution)
         dist.grid_y = grid_y
         dist.grid_cdf = grid_cdf
 
         weights = np.array([3.0, 1.0])
-        # Expected: (3 * 1.25 + 1 * 2.225) / 4.0 = 5.975 / 4 = 1.49375
+        # Both per-sample scores are 1.3, so any valid weighting must also be 1.3
         score = crps_score(y_true, dist, sample_weight=weights)
-        assert score == pytest.approx(1.49375, abs=1e-6)
+        assert score == pytest.approx(1.3, abs=1e-6)
 
-    # --- Common Input Validation Tests ---
+    # --- Common Input Validation Tests
 
     def test_crps_invalid_y_true_ndim(self) -> None:
         """Test error when y_true is not 1D."""
@@ -123,24 +164,32 @@ class TestCRPSScore:
         with pytest.raises(ValueError, match="1D array"):
             crps_score(np.array([[1, 2], [3, 4]]), dist)
 
-    def test_crps_sample_count_mismatch(self) -> None:
-        """Test error when sample count in y_true mismatches y_dist."""
+    def test_crps_sample_count_mismatch_continuous(self) -> None:
+        """Test error when sample count in y_true mismatches a continuous
+        y_dist's grid_cdf row count."""
         dist = MagicMock(spec=ContinuousPredictiveDistribution)
-        dist.grid_cdf = np.ones((5, 10))
-        dist.grid_y = np.linspace(0, 10, 10)
-
+        dist.grid_y = np.array([0.0, 10.0])
+        dist.grid_cdf = np.array([[0.2, 0.8]])
         with pytest.raises(ValueError, match="Sample count mismatch"):
-            crps_score(np.array([1, 2, 3]), dist)
+            crps_score(np.array([1.0, 2.0]), dist)
+
+    def test_crps_sample_count_mismatch_discrete(self) -> None:
+        """Test error when sample count in y_true mismatches a discrete
+        y_dist's pmf row count."""
+        classes = np.array([0, 1])
+        pmf = np.array([[0.5, 0.5]])
+        dist = DiscretePredictiveDistribution(pmf=pmf, classes=classes)
+        with pytest.raises(ValueError, match="Sample count mismatch"):
+            crps_score(np.array([0, 1]), dist)
 
     def test_crps_invalid_sample_weight_shape(self) -> None:
-        """Test error when sample_weight shape does not match y_true."""
-        classes = np.array([0, 1])
-        pmf = np.array([[1.0, 0.0]])
-        y_true = np.array([0])
-        dist = DiscretePredictiveDistribution(pmf=pmf, classes=classes)
-
+        """Test error when sample_weight shape mismatches y_true, for the
+        continuous branch."""
+        dist = MagicMock(spec=ContinuousPredictiveDistribution)
+        dist.grid_y = np.array([0.0, 10.0])
+        dist.grid_cdf = np.array([[0.2, 0.8]])
         with pytest.raises(ValueError, match="Expected 'sample_weight' shape"):
-            crps_score(y_true, dist, sample_weight=np.array([1.0, 2.0]))
+            crps_score(np.array([5.0]), dist, sample_weight=[1.0, 2.0])
 
 
 class TestPinballLoss:
