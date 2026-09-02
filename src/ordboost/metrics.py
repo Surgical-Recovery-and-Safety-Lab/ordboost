@@ -455,6 +455,11 @@ def winkler_score(
     float
         Mean Winkler score across samples (lower is better).
 
+    Raises
+    ------
+    ValueError
+        If alpha not within (0.0, 1.0)
+
     """
     if not 0.0 < alpha < 1.0:
         raise ValueError("Significance level 'alpha' must lie within (0.0, 1.0).")
