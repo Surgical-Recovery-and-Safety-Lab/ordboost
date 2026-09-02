@@ -373,7 +373,16 @@ def interval_coverage_rate(
     float
         Proportion of true observations lying within predicted interval bounds.
 
+    Raises
+    ------
+    ValueError
+        If alpha not within (0.0, 1.0); or sample_weights do not have
+        the same shape as y_arr.
+
     """
+    if not 0.0 < alpha < 1.0:
+        raise ValueError("Significance level 'alpha' must lie within (0.0, 1.0).")
+
     y_true_arr = np.asarray(y_true, dtype=float)
     lower, upper = dist.interval(alpha=alpha)
 
