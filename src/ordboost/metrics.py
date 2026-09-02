@@ -14,9 +14,9 @@ from ordboost.distributions import (
 
 
 def baseline_distribution(
-    y_train: ArrayLike, n_samples: int
+    y_train: ArrayLike, n_samples: int, boundary_epsilon: float = 1e-4
 ) -> ContinuousPredictiveDistribution:
-    """Construct a no-covariate baseline distribution.
+    """Construct a climatological (no-covariate) baseline distribution.
 
     Builds the unconditional empirical CDF of `y_train` and broadcasts it
     identically across `n_samples` rows, representing the best achievable
@@ -32,9 +32,16 @@ def baseline_distribution(
         "no covariate information" rather than "no information restricted
         to a subgroup" (see `crps_skill_score`).
     n_samples : int
-        Number of rows to broadcast the baseline CDF across, e.g.
+        Number of rows to broadcast the climatological CDF across, e.g.
         the number of samples in the evaluation set this baseline will be
         scored against.
+    boundary_epsilon : float, default=1e-4
+        Offset used to place a grid point strictly below the observed
+        minimum of `y_train`, forced to CDF=0.0. Required because
+        `ContinuousPredictiveDistribution` validates that every row's
+        first value equals 0.0 within tolerance, and the empirical CDF at
+        the observed minimum itself is generally nonzero (typically
+        `1/n_train_samples`, not 0).
 
     Returns
     -------
@@ -54,8 +61,12 @@ def baseline_distribution(
     if not isinstance(n_samples, (int, np.integer)) or n_samples <= 0:
         raise ValueError(f"'n_samples' must be a positive integer, got {n_samples}.")
 
-    grid_y = np.sort(np.unique(y_train_arr))
-    grid_cdf_row = np.array([np.mean(y_train_arr <= v) for v in grid_y])
+    unique_y = np.sort(np.unique(y_train_arr))
+    unique_cdf = np.array([np.mean(y_train_arr <= v) for v in unique_y])
+
+    grid_y = np.concatenate([[unique_y[0] - boundary_epsilon], unique_y])
+    grid_cdf_row = np.concatenate([[0.0], unique_cdf])
+
     grid_cdf = np.tile(grid_cdf_row, (n_samples, 1))
 
     return ContinuousPredictiveDistribution(grid_y=grid_y, grid_cdf=grid_cdf)
