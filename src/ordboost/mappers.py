@@ -167,20 +167,24 @@ class BaseBinMapper(ABC, BaseEstimator, TransformerMixin):
     ) -> np.ndarray:
         """Assign each continuous target to a 0-indexed discrete bin.
 
+        Equivalent to `numpy.digitize(y_cont, edges)` directly: every
+        value in `edges` is a real, enforced threshold under this
+        mapper's `bin_edges` convention.
+
         Parameters
         ----------
         y_cont : ndarray of shape (n_samples,)
             Continuous target values.
-        edges : ndarray of shape (n_bins + 1,)
-            Validated bin edges.
+        edges : ndarray of shape (n_bins - 1,)
+            Validated interior threshold edges.
         y_binned : array-like of shape (n_samples,) or None
-            Pre-computed 0-indexed bin labels. If None, labels are derived
-            from `edges` via `numpy.digitize`.
+            Pre-computed 0-indexed bin labels. If None, labels are
+            derived from `edges` via `numpy.digitize`.
 
         Returns
         -------
         ndarray of shape (n_samples,)
-            Integer bin label for each sample.
+            Integer bin label for each sample, in `[0, len(edges)]`.
 
         Raises
         ------
@@ -190,7 +194,7 @@ class BaseBinMapper(ABC, BaseEstimator, TransformerMixin):
 
         """
         if y_binned is None:
-            return np.digitize(y_cont, edges[1:-1])
+            return np.digitize(y_cont, edges)
         binned = np.asarray(y_binned, dtype=int)
         if binned.shape != y_cont.shape:
             raise ValueError(
