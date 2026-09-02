@@ -15,55 +15,56 @@ class BaseBinMapper(ABC, BaseEstimator, TransformerMixin):
 
     A bin mapper converts a discrete probability mass function (PMF) over
     ordinal bins into a continuous predictive cumulative distribution
-    function (CDF). Subclasses define how each bin's interior is refined
-    into additional grid points by implementing `_intra_bin_points` and
-    `fit`; `to_continuous_dist` and `transform` are shared and operate
-    identically for every subclass once a grid has been fitted, so that a
-    subclass's point estimate can never disagree with its full predicted
-    distribution.
+    function (CDF). Subclasses need only implement `_intra_bin_points`,
+    which defines how each bin's interior is refined into additional grid
+    points, and optionally `_validate_intra_bin_params` for any
+    subclass-specific parameter validation that must run before the grid
+    is built.
 
     Parameters
     ----------
-    bin_edges : array-like of shape (n_bins + 1,) or None, default=None
-        Monotonically increasing boundaries defining continuous bin
-        intervals.
-    bounded_below : bool, default=True
-        If True, the outcome's support is asserted to have a true lower
-        limit, and the predictive CDF is forced to 0 there. The anchor
-        value is the observed training minimum when bin 0 contains
-        training data, and `bin_edges[0]` otherwise. If False,
-        `bin_edges[0]` is treated as an arbitrary or nominal lower bound
-        (e.g. an open-ended first bin) rather than the outcome's true
-        support boundary; the CDF is still forced to 0 there so the grid
-        remains well-defined, but this should be understood as a
-        truncation rather than a claim about the outcome itself.
-    bounded_above : bool, default=True
-        Mirrors `bounded_below` for the upper boundary of the final bin.
+    bin_edges : array-like of shape (n_bins - 1,) or None, default=None
+        Strictly increasing interior threshold values defining bin
+        boundaries, matching the convention of `numpy.digitize`: every
+        supplied value is a real, enforced boundary. With `K-1` edges,
+        there are `K` bins: `(-inf, edges[0])`, `[edges[0], edges[1])`,
+        ..., `[edges[K-2], +inf)`. Whether the outermost bins are
+        actually unbounded, or have a known finite limit, is controlled
+        separately by `lower_bound`/`upper_bound`.
+    lower_bound : float or None, default=None
+        If set, asserts that the outcome's support has a true, known
+        finite lower limit at this value, and the predictive CDF is
+        forced to 0.0 there. If bin 0 contains no training data, this
+        value is still used as the anchor, If None, the first bin is
+        treated as genuinely unbounded below, and the CDF-0 anchor is
+        instead placed at the observed training minimum
+        (or, if bin 0 has no training data, degenerates to a zero-width
+        bin at `bin_edges[0]`).
+    upper_bound : float or None, default=None
+        Mirrors `lower_bound` for the upper boundary of the final bin.
     floor_atom : bool, default=False
-        If True, the lower boundary of bin 0 is modelled as a probability
-        atom: the empirical fraction of bin 0's own training data at or
-        below that boundary is estimated and assigned as that grid point's
+        If True, the lower boundary is modelled as a probability atom:
+        the empirical fraction of bin 0's own training data at or below
+        `lower_bound` is estimated and assigned as that grid point's
         cumulative weight, producing an approximated discontinuity there.
-        Requires `bounded_below=True`.
+        Requires `lower_bound` to be set.
     ceiling_atom : bool, default=False
-        Mirrors `floor_atom` for the upper boundary of the final bin.
-        Requires `bounded_above=True`.
+        Mirrors `floor_atom` for the upper boundary. Requires
+        `upper_bound` to be set.
     boundary_epsilon : float, default=1e-4
         Offset used to place two grid points strictly outside/inside the
         outcome's support: the forced CDF=0 anchor at
-        ``y_min - boundary_epsilon``, and, when `ceiling_atom` is True,
-        the near-ceiling atom point at ``y_max - boundary_epsilon``. Must
-        be small relative to the narrowest bin width in `bin_edges`;
-        values comparable to or larger than a bin's width can place this
-        offset point outside its intended bin or collide with adjacent
-        grid points.
+        ``low_bound_0 - boundary_epsilon``, and, when `ceiling_atom` is
+        True, the near-ceiling atom point at
+        ``high_bound_last - boundary_epsilon``. Must be small relative to
+        the narrowest bin width
 
     Attributes
     ----------
-    bin_edges_ : ndarray of shape (n_bins + 1,)
-        Validated bin edges, set during `fit`.
+    bin_edges_ : ndarray of shape (n_bins - 1,)
+        Validated interior threshold edges, set during `fit`.
     n_bins_ : int
-        Number of discrete bins defined by `bin_edges_`.
+        Number of discrete bins, equal to `len(bin_edges_) + 1`.
     grid_y_ : ndarray of shape (n_grid_points,)
         Fitted sub-grid target values, in ascending order.
     grid_cdf_weights_ : ndarray of shape (n_grid_points,)
@@ -86,15 +87,15 @@ class BaseBinMapper(ABC, BaseEstimator, TransformerMixin):
     def __init__(
         self,
         bin_edges: Union[ArrayLike, None] = None,
-        bounded_below: bool = True,
-        bounded_above: bool = True,
+        lower_bound: Union[float, None] = None,
+        upper_bound: Union[float, None] = None,
         floor_atom: bool = False,
         ceiling_atom: bool = False,
         boundary_epsilon: float = 1e-4,
     ) -> None:
         self.bin_edges = bin_edges
-        self.bounded_below = bounded_below
-        self.bounded_above = bounded_above
+        self.lower_bound = lower_bound
+        self.upper_bound = upper_bound
         self.floor_atom = floor_atom
         self.ceiling_atom = ceiling_atom
         self.boundary_epsilon = boundary_epsilon
