@@ -8,17 +8,36 @@ and this project adheres to Semantic Versioning ([SemVer](https://semver.org/spe
 ## [Unreleased]
 
 ### Added
+* **BREAKING** UniformBinMapper accepts n_points to define the number of midpoints to add.
+* **BREAKING** ContinousBinMapper accepts a resolution parameter to determine the number of points.
 * Github workflow to publish package on PyPI when a new released is published.
 * Example scripts for each example in the MkDocs documentation.
 * Package for including the example files directly into the docs.
+* The `scores` packages is now installed and listed in dependencies.
+* The `numba` packages is now installed and listed in dependencies.
+* New metric functions: CRPS and pinball loss skill scores, marginal calibration, sharpness, and PIT diagnostics.
+* One test file for each mapper class in the mappers/ test folder.
+* One test file for each distribution class in the distributions/ test folder.
+* New tests for the new metrics.
 
 ### Changed
-* Version bumped to 0.2.2.dev0.
-* Replaced the example code in the documentation with the example scripts.
+* **BREAKING** Updated the structure of the BaseBinMapper to define all functions common to the mappers.
+* **BREAKING** Updated the specific mapper classes to fit the new BaseBinMapper structure.
+* **BREAKING** Changed the init parameters for the mappers.
+* **BREAKING** ContinuousBinMapper no longer accepts an arbitrary number of grid points.
+* **BREAKING** PredictiveDistribution refactored and now does more validation to avoid duplications.
+* **BREAKING** DiscretePredictiveDistribution refactored to fit the new PredictiveDistribution class structure.
+* **BREAKING** ContinuousPredictiveDistribution refactored to fit the new PredictiveDistribution class structure.
 * Allowing Nan values to be present in train and test data.
+* Isotonic regression monotonicity calling isotonic_regression now.
+* The crps_score function now relies on the scores package.
+* Updated tests for the metric functions.
+* Replaced the example code in the documentation with the example scripts.
+* The interval_coverage_rate metric now raises ValueError if alpha is not in the correct range.
+* Version bumped to 0.3.0.dev0.
 
 ### Fixed
-* Bug in the way the targets where digitised fixed to work with bin edges.
+* Fixed checks in the models to correspond to the docstrings.
 
 ## [0.2.1] 2026-08-19
 
