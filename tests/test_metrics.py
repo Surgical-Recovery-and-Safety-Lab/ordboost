@@ -12,6 +12,7 @@ from ordboost.distributions import (
 from ordboost.metrics import (
     baseline_distribution,
     crps_score,
+    crps_skill_score,
     interval_coverage_rate,
     pinball_loss,
     winkler_score,
@@ -283,6 +284,86 @@ class TestCRPSScore:
         dist.grid_cdf = np.array([[0.2, 0.8]])
         with pytest.raises(ValueError, match="Expected 'sample_weight' shape"):
             crps_score(np.array([5.0]), dist, sample_weight=[1.0, 2.0])
+
+
+class TestCRPSSkillScore:
+    """Tests for crps_skill_score."""
+
+    def test_formula_matches_hand_computation(self) -> None:
+        """Test that the skill score equals 1 - crps_model/crps_baseline
+        for known mocked CRPS values."""
+        dist_model = MagicMock(spec=ContinuousPredictiveDistribution)
+        dist_baseline = MagicMock(spec=ContinuousPredictiveDistribution)
+
+        with patch("ordboost.metrics.crps_score", side_effect=[2.0, 8.0]) as mock_crps:
+            score = crps_skill_score([1.0, 2.0], dist_model, dist_baseline)
+
+        assert score == pytest.approx(1.0 - 2.0 / 8.0)
+        assert mock_crps.call_count == 2
+
+    def test_perfect_model_gives_skill_score_of_one(self) -> None:
+        """Test that a model CRPS of 0.0 yields a skill score of 1.0
+        (perfect forecast), regardless of the baseline's CRPS."""
+        dist_model = MagicMock(spec=ContinuousPredictiveDistribution)
+        dist_baseline = MagicMock(spec=ContinuousPredictiveDistribution)
+
+        with patch("ordboost.metrics.crps_score", side_effect=[0.0, 5.0]):
+            score = crps_skill_score([1.0], dist_model, dist_baseline)
+
+        assert score == pytest.approx(1.0)
+
+    def test_model_equal_to_baseline_gives_skill_score_of_zero(self) -> None:
+        """Test that identical model and baseline CRPS values give a
+        skill score of exactly 0.0."""
+        dist_model = MagicMock(spec=ContinuousPredictiveDistribution)
+        dist_baseline = MagicMock(spec=ContinuousPredictiveDistribution)
+
+        with patch("ordboost.metrics.crps_score", side_effect=[4.0, 4.0]):
+            score = crps_skill_score([1.0], dist_model, dist_baseline)
+
+        assert score == pytest.approx(0.0)
+
+    def test_model_worse_than_baseline_gives_negative_score(self) -> None:
+        """Test that a model CRPS worse than the baseline's yields a
+        negative skill score."""
+        dist_model = MagicMock(spec=ContinuousPredictiveDistribution)
+        dist_baseline = MagicMock(spec=ContinuousPredictiveDistribution)
+
+        with patch("ordboost.metrics.crps_score", side_effect=[10.0, 4.0]):
+            score = crps_skill_score([1.0], dist_model, dist_baseline)
+
+        assert score == pytest.approx(1.0 - 10.0 / 4.0)
+        assert score < 0.0
+
+    def test_sample_weight_forwarded_to_both_crps_calls(self) -> None:
+        """Test that sample_weight is passed through identically to both
+        the model and baseline CRPS computations."""
+        dist_model = MagicMock(spec=ContinuousPredictiveDistribution)
+        dist_baseline = MagicMock(spec=ContinuousPredictiveDistribution)
+        weights = [1.0, 2.0]
+
+        with patch("ordboost.metrics.crps_score", side_effect=[1.0, 2.0]) as mock_crps:
+            crps_skill_score(
+                [1.0, 2.0], dist_model, dist_baseline, sample_weight=weights
+            )
+
+        for call in mock_crps.call_args_list:
+            assert call.kwargs.get("sample_weight") == weights
+
+    def test_integration_with_real_crps_score(self) -> None:
+        """Test end-to-end against real (unmocked) crps_score and
+        baseline_distribution, confirming the pieces compose correctly
+        rather than only working with mocks."""
+        y_train = np.array([0.0, 5.0, 10.0])
+        y_true = np.array([5.0])
+        grid_y = np.array([0.0, 10.0])
+        grid_cdf = np.array([[0.0, 1.0]])
+
+        dist_model = ContinuousPredictiveDistribution(grid_y=grid_y, grid_cdf=grid_cdf)
+        dist_baseline = baseline_distribution(y_train, n_samples=1)
+
+        score = crps_skill_score(y_true, dist_model, dist_baseline)
+        assert np.isfinite(score)
 
 
 class TestPinballLoss:
