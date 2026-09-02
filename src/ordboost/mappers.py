@@ -430,9 +430,7 @@ class BaseBinMapper(ABC, BaseEstimator, TransformerMixin):
 
         Interpolates each sample's cumulative PMF against the fitted
         `grid_cdf_weights_` to obtain the predicted CDF value at each
-        `grid_y_` point. Shared across all subclasses; behaviour is fully
-        determined by the fitted grid, so this always agrees with
-        `transform`.
+        `grid_y_` point. Shared across all subclasses.
 
         Parameters
         ----------
