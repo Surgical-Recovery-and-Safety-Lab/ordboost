@@ -5,12 +5,14 @@ from typing import Union
 import numpy as np
 import xarray as xr
 from numpy.typing import ArrayLike
-from scores.probability import crps_cdf
+from scipy.stats import kstest
+from scores.probability import Pit, crps_cdf
 
 from ordboost.distributions import (
     ContinuousPredictiveDistribution,
     DiscretePredictiveDistribution,
 )
+from ordboost.mappers import BaseBinMapper
 
 
 def baseline_distribution(
@@ -482,3 +484,101 @@ def winkler_score(
         return float(np.average(sample_scores, weights=weights))
 
     return float(np.mean(sample_scores))
+
+
+def pit_diagnostics(
+    y_true: ArrayLike,
+    dist: ContinuousPredictiveDistribution,
+    mapper: BaseBinMapper,
+) -> Pit:
+    """Construct exact probability integral transform (PIT) diagnostics.
+
+    The left-hand-limit grid is constructed directly from `dist.grid_cdf`
+    using `mapper`'s `floor_atom`/`ceiling_atom` flags: at the floor atom
+    point (index 1, if `floor_atom` is True), the left limit is taken
+    from the padding anchor immediately before it (index 0, forced to
+    0.0); at the ceiling atom point (the last index, if `ceiling_atom` is
+    True), the left limit is taken from the point immediately before it
+    (the second-to-last index). All other points are treated as
+    continuous (`fcst_left == fcst_right`).
+
+    Parameters
+    ----------
+    y_true : ArrayLike of shape (n_samples,)
+        True continuous target values.
+    dist : ContinuousPredictiveDistribution
+        Predicted continuous distributions, with `grid_y`/`grid_cdf`
+        constructed by `mapper`.
+    mapper : BaseBinMapper
+        The (fitted or unfitted) mapper instance whose `floor_atom` and
+        `ceiling_atom` flags determine which grid points are treated as
+        atoms. Only these two boolean attributes are read; the mapper
+        does not need to be fitted.
+
+    Returns
+    -------
+    scores.probability.Pit
+        A fitted `Pit` object exposing `.hist_values(n_bins)`,
+        `.plotting_points()`, `.plotting_points_parametric()`,
+        `.expected_value()`, `.variance()`, and `.alpha_score()` for
+        calibration diagnostics and summary statistics.
+
+    Raises
+    ------
+    ValueError
+        If `y_true`'s length does not match `dist.grid_cdf`'s sample count.
+
+    """
+    y_true_arr = np.asarray(y_true, dtype=float)
+    n_samples = dist.grid_cdf.shape[0]
+    if y_true_arr.shape != (n_samples,):
+        raise ValueError(
+            f"Expected 'y_true' of shape ({n_samples},) to match 'dist', "
+            f"got shape {y_true_arr.shape}."
+        )
+
+    fcst_right = dist.grid_cdf.copy()
+    fcst_left = dist.grid_cdf.copy()
+
+    if getattr(mapper, "floor_atom", False):
+        fcst_left[:, 1] = fcst_right[:, 0]
+    if getattr(mapper, "ceiling_atom", False):
+        fcst_left[:, -1] = fcst_right[:, -2]
+
+    fcst_right_da = xr.DataArray(
+        fcst_right, dims=["sample", "threshold"], coords={"threshold": dist.grid_y}
+    )
+    fcst_left_da = xr.DataArray(
+        fcst_left, dims=["sample", "threshold"], coords={"threshold": dist.grid_y}
+    )
+    obs_da = xr.DataArray(y_true_arr, dims=["sample"])
+
+    return Pit(
+        fcst_right_da, obs_da, cdf_threshold_dim="threshold", fcst_left=fcst_left_da
+    )
+
+
+def pit_ks_test(pit: Pit) -> tuple[float, float]:
+    """Compute a Kolmogorov-Smirnov test of PIT uniformity.
+
+    Convenience wrapper around `scipy.stats.kstest`, using `pit`'s
+    duplicate-free plotting points. For discontinuous-CDF calibration
+    assessment the alpha score is prefered and computed directly
+    from the Pit object.
+
+    Parameters
+    ----------
+    pit : scores.probability.Pit
+        A fitted `Pit` object, e.g. from `pit_diagnostics`.
+
+    Returns
+    -------
+    statistic : float
+        The KS test statistic.
+    p_value : float
+        The associated p-value.
+
+    """
+    points = pit.plotting_points_parametric()
+    result = kstest(points.values, "uniform")
+    return float(result.statistic), float(result.pvalue)
