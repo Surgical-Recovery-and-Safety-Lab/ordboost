@@ -519,9 +519,9 @@ class EmpiricalMeanBinMapper(BaseBinMapper):
     bin_edges : array-like of shape (n_bins + 1,) or None, default=None
         Monotonically increasing boundaries defining continuous bin
         intervals.
-    bounded_below : bool, default=True
+    lower_bound : bool, default=True
         See `BaseBinMapper`.
-    bounded_above : bool, default=True
+    upper_bound : bool, default=True
         See `BaseBinMapper`.
     floor_atom : bool, default=False
         See `BaseBinMapper`.
@@ -585,9 +585,9 @@ class EmpiricalMedianBinMapper(BaseBinMapper):
     bin_edges : array-like of shape (n_bins + 1,) or None, default=None
         Monotonically increasing boundaries defining continuous bin
         intervals.
-    bounded_below : bool, default=True
+    lower_bound : bool, default=True
         See `BaseBinMapper`.
-    bounded_above : bool, default=True
+    upper_bound : bool, default=True
         See `BaseBinMapper`.
     floor_atom : bool, default=False
         See `BaseBinMapper`.
@@ -680,9 +680,9 @@ class QuantileBinMapper(BaseBinMapper):
     quantiles : array-like of shape (n_quantiles,), default=(0.25, 0.50, 0.75)
         Intra-bin quantile levels, strictly within (0.0, 1.0), used to
         construct interior grid points for every bin.
-    bounded_below : bool, default=True
+    lower_bound : bool, default=True
         See `BaseBinMapper`.
-    bounded_above : bool, default=True
+    upper_bound : bool, default=True
         See `BaseBinMapper`.
     floor_atom : bool, default=False
         See `BaseBinMapper`.
@@ -703,16 +703,16 @@ class QuantileBinMapper(BaseBinMapper):
         self,
         bin_edges: Union[ArrayLike, None] = None,
         quantiles: ArrayLike = (0.25, 0.50, 0.75),
-        bounded_below: bool = True,
-        bounded_above: bool = True,
+        lower_bound: bool = True,
+        upper_bound: bool = True,
         floor_atom: bool = False,
         ceiling_atom: bool = False,
         boundary_epsilon: float = 1e-4,
     ) -> None:
         super().__init__(
             bin_edges=bin_edges,
-            bounded_below=bounded_below,
-            bounded_above=bounded_above,
+            lower_bound=lower_bound,
+            upper_bound=upper_bound,
             floor_atom=floor_atom,
             ceiling_atom=ceiling_atom,
             boundary_epsilon=boundary_epsilon,
@@ -795,9 +795,9 @@ class UniformBinMapper(BaseBinMapper):
         `i`-th point (``i = 1, ..., n_points``) is placed at fraction
         ``i / (n_points + 1)`` of the bin's width, with cumulative weight
         offset ``k + i / (n_points + 1)``.
-    bounded_below : bool, default=True
+    lower_bound : bool, default=True
         See `BaseBinMapper`.
-    bounded_above : bool, default=True
+    upper_bound : bool, default=True
         See `BaseBinMapper`.
     floor_atom : bool, default=False
         See `BaseBinMapper`.
@@ -818,16 +818,16 @@ class UniformBinMapper(BaseBinMapper):
         self,
         bin_edges: Union[ArrayLike, None] = None,
         n_points: int = 1,
-        bounded_below: bool = True,
-        bounded_above: bool = True,
+        lower_bound: bool = True,
+        upper_bound: bool = True,
         floor_atom: bool = False,
         ceiling_atom: bool = False,
         boundary_epsilon: float = 1e-4,
     ) -> None:
         super().__init__(
             bin_edges=bin_edges,
-            bounded_below=bounded_below,
-            bounded_above=bounded_above,
+            lower_bound=lower_bound,
+            upper_bound=upper_bound,
             floor_atom=floor_atom,
             ceiling_atom=ceiling_atom,
             boundary_epsilon=boundary_epsilon,
@@ -918,9 +918,9 @@ class ContinuousBinMapper(BaseBinMapper):
         across all bins during `fit`. Raises `ValueError` if exceeded,
         to fail fast on a `resolution` that is too fine for the target's
         range rather than silently constructing an unusably large grid.
-    bounded_below : bool, default=True
+    lower_bound : bool, default=True
         See `BaseBinMapper`.
-    bounded_above : bool, default=True
+    upper_bound : bool, default=True
         See `BaseBinMapper`.
     floor_atom : bool, default=False
         See `BaseBinMapper`.
@@ -942,16 +942,16 @@ class ContinuousBinMapper(BaseBinMapper):
         resolution: float = 1.0,
         density_weighted: bool = True,
         max_grid_points: int = 1_000_000,
-        bounded_below: bool = True,
-        bounded_above: bool = True,
+        lower_bound: bool = True,
+        upper_bound: bool = True,
         floor_atom: bool = False,
         ceiling_atom: bool = False,
         boundary_epsilon: float = 1e-4,
     ) -> None:
         super().__init__(
             bin_edges=bin_edges,
-            bounded_below=bounded_below,
-            bounded_above=bounded_above,
+            lower_bound=lower_bound,
+            upper_bound=upper_bound,
             floor_atom=floor_atom,
             ceiling_atom=ceiling_atom,
             boundary_epsilon=boundary_epsilon,
