@@ -16,6 +16,7 @@ from ordboost.metrics import (
     interval_coverage_rate,
     pinball_loss,
     pinball_loss_skill_score,
+    sharpness,
     winkler_score,
 )
 
@@ -557,6 +558,92 @@ class TestIntervalCoverageRate:
 
         with pytest.raises(ValueError, match="Expected 'sample_weight' shape"):
             interval_coverage_rate([5.0], dist, sample_weight=[1.0, 2.0])
+
+
+class TestSharpness:
+    """Tests for sharpness."""
+
+    def test_matches_hand_computation(self) -> None:
+        """Test mean interval width against a hand-computed example."""
+        dist = MagicMock(spec=ContinuousPredictiveDistribution)
+        dist.interval.return_value = (
+            np.array([2.0, 5.0, 10.0]),
+            np.array([8.0, 15.0, 20.0]),
+        )
+        # widths: [6.0, 10.0, 10.0] -> mean = 26.0 / 3.0
+        result = sharpness(dist, alpha=0.10)
+        assert result == pytest.approx(26.0 / 3.0)
+
+    def test_calls_interval_with_given_alpha(self) -> None:
+        """Test that dist.interval is called with the supplied alpha."""
+        dist = MagicMock(spec=ContinuousPredictiveDistribution)
+        dist.interval.return_value = (np.array([0.0]), np.array([10.0]))
+        sharpness(dist, alpha=0.20)
+        dist.interval.assert_called_once_with(alpha=0.20)
+
+    def test_default_alpha(self) -> None:
+        """Test that the default alpha=0.10 is used when not specified."""
+        dist = MagicMock(spec=ContinuousPredictiveDistribution)
+        dist.interval.return_value = (np.array([0.0]), np.array([10.0]))
+        sharpness(dist)
+        dist.interval.assert_called_once_with(alpha=0.10)
+
+    def test_zero_width_interval_gives_zero_sharpness(self) -> None:
+        """Test that identical lower and upper bounds give sharpness of 0.0."""
+        dist = MagicMock(spec=ContinuousPredictiveDistribution)
+        dist.interval.return_value = (np.array([5.0, 5.0]), np.array([5.0, 5.0]))
+        assert sharpness(dist, alpha=0.10) == pytest.approx(0.0)
+
+    def test_single_sample(self) -> None:
+        """Test sharpness computation for a single-sample distribution."""
+        dist = MagicMock(spec=ContinuousPredictiveDistribution)
+        dist.interval.return_value = (np.array([3.0]), np.array([9.0]))
+        assert sharpness(dist, alpha=0.10) == pytest.approx(6.0)
+
+    def test_alpha_zero_raises(self) -> None:
+        """Test that alpha=0.0 raises ValueError (open interval bound)."""
+        dist = MagicMock(spec=ContinuousPredictiveDistribution)
+        with pytest.raises(ValueError, match="must lie within"):
+            sharpness(dist, alpha=0.0)
+
+    def test_alpha_one_raises(self) -> None:
+        """Test that alpha=1.0 raises ValueError (open interval bound)."""
+        dist = MagicMock(spec=ContinuousPredictiveDistribution)
+        with pytest.raises(ValueError, match="must lie within"):
+            sharpness(dist, alpha=1.0)
+
+    def test_negative_alpha_raises(self) -> None:
+        """Test that a negative alpha raises ValueError."""
+        dist = MagicMock(spec=ContinuousPredictiveDistribution)
+        with pytest.raises(ValueError, match="must lie within"):
+            sharpness(dist, alpha=-0.1)
+
+    def test_alpha_above_one_raises(self) -> None:
+        """Test that alpha > 1.0 raises ValueError."""
+        dist = MagicMock(spec=ContinuousPredictiveDistribution)
+        with pytest.raises(ValueError, match="must lie within"):
+            sharpness(dist, alpha=1.5)
+
+    def test_alpha_validated_before_interval_is_called(self) -> None:
+        """Test that an invalid alpha raises before dist.interval is ever
+        invoked, confirming validation happens up front."""
+        dist = MagicMock(spec=ContinuousPredictiveDistribution)
+        with pytest.raises(ValueError, match="must lie within"):
+            sharpness(dist, alpha=0.0)
+        dist.interval.assert_not_called()
+
+    def test_larger_alpha_gives_narrower_interval_sanity(self) -> None:
+        """Test a realistic end-to-end case (real distribution, not
+        mocked) confirming a larger alpha (narrower central interval)
+        produces smaller sharpness, as a basic sanity check of the
+        interval-width relationship rather than an isolated unit check."""
+        grid_y = np.array([0.0, 10.0, 20.0, 30.0, 40.0])
+        grid_cdf = np.array([[0.0, 0.2, 0.5, 0.8, 1.0]])
+        dist = ContinuousPredictiveDistribution(grid_y=grid_y, grid_cdf=grid_cdf)
+
+        narrow = sharpness(dist, alpha=0.50)  # 50% interval
+        wide = sharpness(dist, alpha=0.10)  # 90% interval
+        assert narrow < wide
 
 
 class TestWinklerScore:
