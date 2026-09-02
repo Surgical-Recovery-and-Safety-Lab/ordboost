@@ -361,6 +361,35 @@ def interval_coverage_rate(
     return float(np.mean(covered))
 
 
+def sharpness(dist: ContinuousPredictiveDistribution, alpha: float = 0.10) -> float:
+    """Compute mean interval width at significance level alpha.
+
+
+    Parameters
+    ----------
+    dist : ContinuousPredictiveDistribution
+        Predicted continuous distributions.
+    alpha : float, default=0.10
+        Tail significance level in range (0.0, 1.0).
+
+    Returns
+    -------
+    float
+        Mean interval width.
+
+    Raises
+    ------
+    ValueError
+        If alpha not within (0.0, 1.0)
+
+    """
+    if not 0.0 < alpha < 1.0:
+        raise ValueError("Significance level 'alpha' must lie within (0.0, 1.0).")
+
+    lower, upper = dist.interval(alpha=alpha)
+    return float(np.mean(upper - lower))
+
+
 def winkler_score(
     y_true: ArrayLike,
     dist: ContinuousPredictiveDistribution,
