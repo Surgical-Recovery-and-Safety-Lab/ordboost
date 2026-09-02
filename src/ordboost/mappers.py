@@ -101,51 +101,48 @@ class BaseBinMapper(ABC, BaseEstimator, TransformerMixin):
         self.boundary_epsilon = boundary_epsilon
 
     def _validate_atom_flags(self) -> None:
-        """Validate consistency between the atom and boundedness flags.
+        """Validate consistency between the atom and boundary parameters.
 
         Raises
         ------
         ValueError
-            If `floor_atom` is True while `bounded_below` is False, or if
-            `ceiling_atom` is True while `bounded_above` is False. An atom
-            cannot be placed at a boundary that is not itself asserted to
-            be the outcome's true support limit.
+            If `floor_atom` is True while `lower_bound` is None, or if
+            `ceiling_atom` is True while `upper_bound` is None.
 
         """
-        if self.floor_atom and not self.bounded_below:
+        if self.floor_atom and self.lower_bound is None:
             raise ValueError(
-                "'floor_atom=True' requires 'bounded_below=True': an atom "
-                "cannot be placed at a boundary that isn't asserted to be "
-                "the true lower limit of the outcome's support."
+                "'floor_atom=True' requires 'lower_bound' to be set: an atom "
+                "cannot be placed at an unbounded (-inf) lower boundary."
             )
-        if self.ceiling_atom and not self.bounded_above:
+        if self.ceiling_atom and self.upper_bound is None:
             raise ValueError(
-                "'ceiling_atom=True' requires 'bounded_above=True': an atom "
-                "cannot be placed at a boundary that isn't asserted to be "
-                "the true upper limit of the outcome's support."
+                "'ceiling_atom=True' requires 'upper_bound' to be set: an "
+                "atom cannot be placed at an unbounded (+inf) upper boundary."
             )
 
     def _validate_edges(self) -> np.ndarray:
-        """Validate and return the mapper's bin edges.
+        """Validate and return the mapper's interior threshold edges.
 
         Returns
         -------
-        ndarray of shape (n_bins + 1,)
-            Validated bin edges as a 1D float array.
+        ndarray of shape (n_bins - 1,)
+            Validated interior thresholds as a 1D float array.
 
         Raises
         ------
         ValueError
-            If `bin_edges` is None, is not 1D, has fewer than 2 edges, or
+            If `bin_edges` is None, is not 1D, has fewer than 1 edge, or
             is not strictly monotonically increasing.
 
         """
         if self.bin_edges is None:
             raise ValueError("'bin_edges' must be set on the mapper prior to fitting.")
         edges = np.asarray(self.bin_edges, dtype=float)
-        if edges.ndim != 1 or len(edges) < 2:
+        if edges.ndim != 1 or len(edges) < 1:
             raise ValueError(
-                "Expected 'bin_edges' to be a 1D array with at least 2 edges."
+                "Expected 'bin_edges' to be a 1D array with at least 1 threshold "
+                "(defining at least 2 bins)."
             )
         if np.any(np.diff(edges) <= 0.0):
             raise ValueError("'bin_edges' must be strictly monotonically increasing.")
