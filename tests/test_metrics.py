@@ -14,6 +14,7 @@ from ordboost.metrics import (
     crps_score,
     crps_skill_score,
     interval_coverage_rate,
+    marginal_calibration_curve,
     pinball_loss,
     pinball_loss_skill_score,
     sharpness,
@@ -516,6 +517,97 @@ class TestPinballLossSkillScore:
 
         score = pinball_loss_skill_score([5.0], dist_model, dist_baseline, q=0.5)
         assert np.isfinite(score)
+
+
+class TestMarginalCalibrationCurve:
+    """Tests for marginal_calibration_curve."""
+
+    def test_returns_grid_y_unchanged(self) -> None:
+        """Test that the returned grid_y is exactly dist.grid_y."""
+        grid_y = np.array([0.0, 5.0, 10.0])
+        grid_cdf = np.array([[0.0, 0.5, 1.0]])
+        dist = ContinuousPredictiveDistribution(grid_y=grid_y, grid_cdf=grid_cdf)
+
+        returned_grid_y, _ = marginal_calibration_curve(np.array([5.0]), dist)
+        np.testing.assert_array_equal(returned_grid_y, grid_y)
+
+    def test_calibration_matches_hand_computation(self) -> None:
+        """Test the calibration curve against a hand-computed example.
+
+        grid_y = [0, 5, 10], two samples with grid_cdf rows [0, 0.5, 1]
+        and [0, 0.3, 1] -> mean_cdf = [0, 0.4, 1].
+        y_true = [3, 8] -> empirical_cdf at each grid point:
+          y<=0: 0/2=0.0; y<=5: 1/2=0.5 (only 3<=5); y<=10: 2/2=1.0
+        calibration = empirical_cdf - mean_cdf = [0.0, 0.1, 0.0]
+        """
+        grid_y = np.array([0.0, 5.0, 10.0])
+        grid_cdf = np.array([[0.0, 0.5, 1.0], [0.0, 0.3, 1.0]])
+        dist = ContinuousPredictiveDistribution(grid_y=grid_y, grid_cdf=grid_cdf)
+        y_true = np.array([3.0, 8.0])
+
+        _, calibration = marginal_calibration_curve(y_true, dist)
+        np.testing.assert_allclose(calibration, [0.0, 0.1, 0.0], atol=1e-9)
+
+    def test_perfectly_matched_calibration_is_zero(self) -> None:
+        """Test that when the empirical CDF exactly matches the mean
+        predicted CDF at every grid point, calibration is exactly zero."""
+        grid_y = np.array([0.0, 10.0])
+        grid_cdf = np.array([[0.0, 1.0], [0.0, 1.0]])  # mean_cdf = [0.0, 1.0]
+        dist = ContinuousPredictiveDistribution(grid_y=grid_y, grid_cdf=grid_cdf)
+        # true values chosen so empirical CDF at grid_y is also [0.0, 1.0]
+        y_true = np.array([5.0, 8.0])  # none <= 0, both <= 10
+
+        _, calibration = marginal_calibration_curve(y_true, dist)
+        np.testing.assert_allclose(calibration, [0.0, 0.0], atol=1e-9)
+
+    def test_negative_calibration_indicates_overprediction(self) -> None:
+        """Test that a predicted CDF running ahead of the empirical CDF
+        yields negative calibration, per the documented sign convention
+        (empirical_cdf - mean_cdf)."""
+        grid_y = np.array([0.0, 5.0, 10.0])
+        grid_cdf = np.array([[0.0, 0.9, 1.0]])  # model claims 90% mass by y=5
+        dist = ContinuousPredictiveDistribution(grid_y=grid_y, grid_cdf=grid_cdf)
+        y_true = np.array([8.0])  # empirical_cdf(5) = 0.0 -- true value is above 5
+
+        _, calibration = marginal_calibration_curve(y_true, dist)
+        assert calibration[1] < 0.0  # 0.0 - 0.9 = -0.9
+
+    def test_output_length_matches_grid_y(self) -> None:
+        """Test that both returned arrays have length equal to len(grid_y)."""
+        grid_y = np.array([0.0, 2.0, 4.0, 6.0, 8.0])
+        grid_cdf = np.tile(np.linspace(0.0, 1.0, 5), (3, 1))
+        dist = ContinuousPredictiveDistribution(grid_y=grid_y, grid_cdf=grid_cdf)
+        y_true = np.array([1.0, 3.0, 7.0])
+
+        returned_grid_y, calibration = marginal_calibration_curve(y_true, dist)
+        assert len(returned_grid_y) == 5
+        assert len(calibration) == 5
+
+    def test_averaging_across_multiple_samples(self) -> None:
+        """Test that mean_cdf is genuinely the average across all sample
+        rows, not just the first row."""
+        grid_y = np.array([0.0, 5.0, 10.0])
+        grid_cdf = np.array(
+            [[0.0, 0.5, 1.0], [0.0, 0.5, 1.0], [0.0, 0.75, 1.0], [0.0, 0.5, 1.0]]
+        )
+        # mean_cdf at grid_y[1] = (3*0.5 + 0.75)/4 = 0.5625
+        dist = ContinuousPredictiveDistribution(grid_y=grid_y, grid_cdf=grid_cdf)
+        y_true = np.array([-1.0, -1.0, -1.0, -1.0])  # empirical_cdf(10) = 1.0
+
+        _, calibration = marginal_calibration_curve(y_true, dist)
+        assert calibration[1] == pytest.approx(1.0 - 0.5625)
+
+    def test_single_sample(self) -> None:
+        """Test that the function works correctly for a single-sample
+        distribution (mean over one row is that row itself)."""
+        grid_y = np.array([0.0, 5.0, 10.0])
+        grid_cdf = np.array([[0.0, 0.6, 1.0]])
+        dist = ContinuousPredictiveDistribution(grid_y=grid_y, grid_cdf=grid_cdf)
+        y_true = np.array([5.0])
+
+        _, calibration = marginal_calibration_curve(y_true, dist)
+        # empirical_cdf = [0.0, 1.0, 1.0]; mean_cdf = [0.0, 0.6, 1.0]
+        np.testing.assert_allclose(calibration, [0.0, 0.4, 0.0], atol=1e-9)
 
 
 class TestIntervalCoverageRate:
