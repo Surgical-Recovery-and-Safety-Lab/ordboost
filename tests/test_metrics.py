@@ -1,6 +1,6 @@
 """Unit tests for ordboost.metrics."""
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
@@ -10,11 +10,104 @@ from ordboost.distributions import (
     DiscretePredictiveDistribution,
 )
 from ordboost.metrics import (
+    baseline_distribution,
     crps_score,
     interval_coverage_rate,
     pinball_loss,
     winkler_score,
 )
+
+
+class TestBaselineDistribution:
+    """Tests for baseline_distribution."""
+
+    def test_returns_continuous_predictive_distribution(self) -> None:
+        """Test that the function returns a ContinuousPredictiveDistribution."""
+        y_train = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+        dist = baseline_distribution(y_train, n_samples=3)
+        assert isinstance(dist, ContinuousPredictiveDistribution)
+
+    def test_all_rows_identical(self) -> None:
+        """Test that every row of the broadcast grid_cdf is identical,
+        representing the same unconditional forecast for every sample."""
+        y_train = np.array([1.0, 2.0, 5.0, 10.0])
+        dist = baseline_distribution(y_train, n_samples=5)
+        for i in range(1, 5):
+            np.testing.assert_array_equal(dist.grid_cdf[0], dist.grid_cdf[i])
+
+    def test_output_shape_matches_n_samples(self) -> None:
+        """Test that grid_cdf has exactly n_samples rows."""
+        y_train = np.array([1.0, 2.0, 3.0])
+        dist = baseline_distribution(y_train, n_samples=7)
+        assert dist.grid_cdf.shape[0] == 7
+
+    def test_grid_y_is_sorted_unique_values(self) -> None:
+        """Test that grid_y contains sorted unique values of y_train, with
+        duplicates collapsed to a single grid point."""
+        y_train = np.array([5.0, 1.0, 3.0, 1.0, 5.0])
+        dist = baseline_distribution(y_train, n_samples=1)
+        np.testing.assert_array_equal(dist.grid_y[1:], [1.0, 3.0, 5.0])
+
+    def test_empty_y_train_raises(self) -> None:
+        """Test that an empty y_train raises ValueError."""
+        with pytest.raises(ValueError, match="must not be empty"):
+            baseline_distribution(np.array([]), n_samples=5)
+
+    def test_zero_n_samples_raises(self) -> None:
+        """Test that n_samples=0 raises ValueError."""
+        with pytest.raises(ValueError, match="positive integer"):
+            baseline_distribution(np.array([1.0, 2.0]), n_samples=0)
+
+    def test_negative_n_samples_raises(self) -> None:
+        """Test that a negative n_samples raises ValueError."""
+        with pytest.raises(ValueError, match="positive integer"):
+            baseline_distribution(np.array([1.0, 2.0]), n_samples=-3)
+
+    def test_float_n_samples_raises(self) -> None:
+        """Test that a non-integer n_samples raises ValueError."""
+        with pytest.raises(ValueError, match="positive integer"):
+            baseline_distribution(np.array([1.0, 2.0]), n_samples=2.5)  # type: ignore
+
+    def test_first_grid_point_is_forced_to_zero(self) -> None:
+        """Test that grid_cdf's first column is exactly 0.0, using a fixture
+        where the naive empirical CDF at the observed minimum would NOT be
+        zero -- this is the direct regression test for the missing floor
+        anchor point."""
+        y_train = np.array([1.0, 1.0, 2.0, 3.0, 3.0, 3.0])
+        dist = baseline_distribution(y_train, n_samples=1)
+        assert dist.grid_cdf[0, 0] == 0.0
+
+    def test_grid_y_starts_below_observed_minimum(self) -> None:
+        """Test that grid_y's first value is strictly below y_train's min,
+        by the configured boundary_epsilon."""
+        y_train = np.array([1.0, 2.0, 3.0])
+        dist = baseline_distribution(y_train, n_samples=1, boundary_epsilon=0.01)
+        assert dist.grid_y[0] == pytest.approx(1.0 - 0.01)
+
+    def test_grid_cdf_matches_empirical_cdf(self) -> None:
+        """Test that grid_cdf values at each unique training value match the
+        hand-computed empirical CDF, appearing after the forced floor anchor."""
+        y_train = np.array([1.0, 1.0, 2.0, 3.0, 3.0, 3.0])
+        dist = baseline_distribution(y_train, n_samples=1)
+        # grid_y: [1-eps, 1, 2, 3]; grid_cdf: [0.0, 1/3, 0.5, 1.0]
+        np.testing.assert_allclose(dist.grid_y[1:], [1.0, 2.0, 3.0])
+        np.testing.assert_allclose(dist.grid_cdf[0], [0.0, 1.0 / 3.0, 0.5, 1.0])
+
+    def test_last_grid_point_reaches_one_without_adjustment(self) -> None:
+        """Test that the final grid_cdf value is exactly 1.0, confirming the
+        ceiling needs no equivalent anchor fix -- P(Y <= max(y_train)) = 1.0
+        always, by construction."""
+        y_train = np.array([2.0, 5.0, 9.0])
+        dist = baseline_distribution(y_train, n_samples=1)
+        assert dist.grid_cdf[0, -1] == 1.0
+
+    def test_single_unique_value_y_train(self) -> None:
+        """Test the degenerate case where y_train has a single repeated
+        value: grid_y has the floor anchor plus one point, CDF [0.0, 1.0]."""
+        y_train = np.array([7.0, 7.0, 7.0])
+        dist = baseline_distribution(y_train, n_samples=2)
+        np.testing.assert_allclose(dist.grid_y, [7.0 - 1e-4, 7.0])
+        np.testing.assert_allclose(dist.grid_cdf, [[0.0, 1.0], [0.0, 1.0]])
 
 
 class TestCRPSScore:
