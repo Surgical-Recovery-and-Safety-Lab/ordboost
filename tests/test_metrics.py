@@ -15,6 +15,7 @@ from ordboost.metrics import (
     crps_skill_score,
     interval_coverage_rate,
     pinball_loss,
+    pinball_loss_skill_score,
     winkler_score,
 )
 
@@ -409,6 +410,111 @@ class TestPinballLoss:
         """Test error when sample_weight shape mismatches y_true."""
         with pytest.raises(ValueError, match="Expected 'sample_weight' shape"):
             pinball_loss([1.0, 2.0], [1.0, 2.0], q=0.5, sample_weight=[1.0])
+
+
+class TestPinballLossSkillScore:
+    """Tests for pinball_loss_skill_score."""
+
+    def test_formula_matches_hand_computation(self) -> None:
+        """Test the skill score formula against hand-computed pinball
+        losses for known ppf outputs. y_true=[10], q=0.5. Model predicts
+        10 exactly (loss=0). Baseline predicts 8: error=10-8=2,
+        loss=q*2=1.0. Skill score = 1 - 0/1.0 = 1.0.
+        """
+        dist_model = MagicMock(spec=ContinuousPredictiveDistribution)
+        dist_model.ppf.return_value = np.array([10.0])
+        dist_baseline = MagicMock(spec=ContinuousPredictiveDistribution)
+        dist_baseline.ppf.return_value = np.array([8.0])
+
+        score = pinball_loss_skill_score([10.0], dist_model, dist_baseline, q=0.5)
+        assert score == pytest.approx(1.0)
+
+    def test_model_equal_to_baseline_gives_skill_score_of_zero(self) -> None:
+        """Test that identical model and baseline predictions give a
+        skill score of exactly 0.0."""
+        dist_model = MagicMock(spec=ContinuousPredictiveDistribution)
+        dist_model.ppf.return_value = np.array([8.0])
+        dist_baseline = MagicMock(spec=ContinuousPredictiveDistribution)
+        dist_baseline.ppf.return_value = np.array([8.0])
+
+        score = pinball_loss_skill_score([10.0], dist_model, dist_baseline, q=0.5)
+        assert score == pytest.approx(0.0)
+
+    def test_model_worse_than_baseline_gives_negative_score(self) -> None:
+        """Test a model with larger pinball loss than the baseline.
+        y_true=[10], q=0.9. Model predicts 0: error=10, loss=q*10=9.0.
+        Baseline predicts 9: error=1, loss=q*1=0.9.
+        Skill score = 1 - 9.0/0.9 = -9.0.
+        """
+        dist_model = MagicMock(spec=ContinuousPredictiveDistribution)
+        dist_model.ppf.return_value = np.array([0.0])
+        dist_baseline = MagicMock(spec=ContinuousPredictiveDistribution)
+        dist_baseline.ppf.return_value = np.array([9.0])
+
+        score = pinball_loss_skill_score([10.0], dist_model, dist_baseline, q=0.9)
+        assert score == pytest.approx(-9.0)
+
+    def test_queries_both_distributions_at_same_quantile(self) -> None:
+        """Test that both dist_model.ppf and dist_baseline.ppf are called
+        with the same quantile level q."""
+        dist_model = MagicMock(spec=ContinuousPredictiveDistribution)
+        dist_model.ppf.return_value = np.array([5.0])
+        dist_baseline = MagicMock(spec=ContinuousPredictiveDistribution)
+        dist_baseline.ppf.return_value = np.array([5.0])
+
+        pinball_loss_skill_score([6.0], dist_model, dist_baseline, q=0.25)
+
+        dist_model.ppf.assert_called_once_with(0.25)
+        dist_baseline.ppf.assert_called_once_with(0.25)
+
+    def test_sample_weight_affects_result(self) -> None:
+        """Test that sample_weight is genuinely forwarded (not silently
+        dropped), by confirming weighted and unweighted results differ
+        for asymmetric per-sample losses."""
+        dist_model = MagicMock(spec=ContinuousPredictiveDistribution)
+        dist_model.ppf.return_value = np.array([0.0, 0.0])
+        dist_baseline = MagicMock(spec=ContinuousPredictiveDistribution)
+        dist_baseline.ppf.return_value = np.array([10.0, 1.0])
+
+        y_true = [10.0, 0.0]
+        unweighted = pinball_loss_skill_score(
+            y_true,
+            dist_model,
+            dist_baseline,
+            q=0.5,
+        )
+        weighted = pinball_loss_skill_score(
+            y_true, dist_model, dist_baseline, q=0.5, sample_weight=[10.0, 1.0]
+        )
+        assert unweighted != pytest.approx(weighted)
+
+    def test_invalid_q_raises(self) -> None:
+        """Test that a quantile level outside (0.0, 1.0) raises ValueError,
+        propagated from dist_model.ppf's own quantile validation (using a
+        real distribution, since a MagicMock would not perform this
+        validation itself)."""
+        grid_y = np.array([0.0, 10.0])
+        grid_cdf = np.array([[0.0, 1.0]])
+        dist_model = ContinuousPredictiveDistribution(grid_y=grid_y, grid_cdf=grid_cdf)
+        dist_baseline = ContinuousPredictiveDistribution(
+            grid_y=grid_y, grid_cdf=grid_cdf
+        )
+
+        with pytest.raises(ValueError, match="within \\[0.0, 1.0\\]"):
+            pinball_loss_skill_score([5.0], dist_model, dist_baseline, q=1.5)
+
+    def test_integration_with_real_distributions(self) -> None:
+        """Test end-to-end against real (unmocked) distributions,
+        confirming ppf and pinball_loss compose correctly."""
+        grid_y = np.array([0.0, 10.0])
+        dist_model = ContinuousPredictiveDistribution(
+            grid_y=grid_y, grid_cdf=np.array([[0.0, 1.0]])
+        )
+        y_train = np.array([0.0, 5.0, 10.0])
+        dist_baseline = baseline_distribution(y_train, n_samples=1)
+
+        score = pinball_loss_skill_score([5.0], dist_model, dist_baseline, q=0.5)
+        assert np.isfinite(score)
 
 
 class TestIntervalCoverageRate:
