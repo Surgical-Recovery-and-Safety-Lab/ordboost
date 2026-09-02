@@ -241,15 +241,20 @@ class BaseBinMapper(ABC, BaseEstimator, TransformerMixin):
     def _build_grid(
         self, y_continuous: ArrayLike, y_binned: Union[ArrayLike, None] = None
     ) -> None:
-        """Construct the fitted CDF grid shared by all mapper subclasses.
+        """Fit the CDF grid shared by all mapper subclasses.
 
-        Performs bin assignment, boundary anchoring governed by
-        `bounded_below`/`bounded_above`, optional boundary-atom points
-        governed by `floor_atom`/`ceiling_atom`, per-bin interior points
-        from `_intra_bin_points`, and deduplication of coincident grid
-        values (keeping the maximum weight at each unique `y`, so that a
-        forced boundary weight is never silently discarded in favour of an
-        earlier, lower-weight interior point at the same value).
+        Resolves the outer boundaries of the outcome's support from
+        `lower_bound`/`upper_bound` (falling back to the observed
+        training min/max when unbounded, or to a zero-width degenerate
+        bin when unbounded and empty), performs bin assignment, adds
+        optional boundary-atom points governed by
+        `floor_atom`/`ceiling_atom`, adds per-bin interior points from
+        `_intra_bin_points`, and deduplicates coincident grid values
+        (keeping the maximum weight at each unique `y`, so a forced
+        boundary weight is never discarded in favour of an earlier,
+        lower-weight interior point at the same value). Sets
+        `bin_edges_`, `n_bins_`, `grid_y_`, and `grid_cdf_weights_`
+        directly on the instance.
 
         Parameters
         ----------
@@ -265,11 +270,11 @@ class BaseBinMapper(ABC, BaseEstimator, TransformerMixin):
             If `bin_edges` is invalid, `y_continuous` is not 1D, or
             `y_binned` shape mismatches (raised by `_validate_edges` or
             `_digitize`); if `floor_atom`/`ceiling_atom` are set without
-            their corresponding `bounded_*` flag (raised by
-            `_validate_atom_flags`); or if boundary anchoring together with
-            a supplied `y_binned` produces an invalid (non-positive-width)
-            bin range -- typically indicating that `y_binned` assigns a
-            sample to a bin whose own nominal edges cannot contain that
+            their corresponding boundary being set (raised by
+            `_validate_atom_flags`); or if boundary resolution together
+            with a supplied `y_binned` produces a negative-width bin --
+            typically indicating that `y_binned` assigns a sample to a
+            bin whose own resolved boundaries cannot contain that
             sample's value.
 
         """
@@ -279,30 +284,45 @@ class BaseBinMapper(ABC, BaseEstimator, TransformerMixin):
         if y_cont.ndim != 1:
             raise ValueError("Expected 'y_continuous' to be a 1D array.")
 
-        n_bins = len(edges) - 1
+        n_bins = len(edges) + 1
         binned = self.digitize(y_cont, edges, y_binned)
 
         y_min, y_max = float(y_cont.min()), float(y_cont.max())
         first_has_data = np.any(binned == 0)
         last_has_data = np.any(binned == n_bins - 1)
 
-        low_bound_0 = y_min if (self.bounded_below and first_has_data) else edges[0]
-        high_bound_last = y_max if (self.bounded_above and last_has_data) else edges[-1]
+        if self.lower_bound is not None:
+            low_bound_0 = float(self.lower_bound)
+        elif first_has_data:
+            low_bound_0 = y_min
+        else:
+            low_bound_0 = edges[0]  # degenerate zero-width fallback
+
+        if self.upper_bound is not None:
+            high_bound_last = float(self.upper_bound)
+        elif last_has_data:
+            high_bound_last = y_max
+        else:
+            high_bound_last = edges[-1]  # degenerate zero-width fallback
+
+        extended_edges = np.concatenate([[low_bound_0], edges, [high_bound_last]])
 
         grid_y = [low_bound_0 - self.boundary_epsilon]
         grid_w = [0.0]
 
         for k in range(n_bins):
             mask = binned == k
-            low = low_bound_0 if k == 0 else edges[k]
-            high = high_bound_last if k == n_bins - 1 else edges[k + 1]
+            low = extended_edges[k]
+            high = extended_edges[k + 1]
             bin_data = y_cont[mask]
 
             if low > high:
                 raise ValueError(
-                    f"Bin {k} has an invalid range [low={low}, high={high}] after "
-                    f"boundary anchoring. Check that 'y_binned' is consistent "
-                    f"with 'y_continuous' and 'bin_edges'."
+                    f"Bin {k} has a negative-width range [low={low}, high={high}] "
+                    f"after boundary resolution. This typically means 'y_binned' "
+                    f"assigns a sample to bin {k} whose value falls outside that "
+                    f"bin's own resolved edges -- check that 'y_binned' is "
+                    f"consistent with 'y_continuous' and 'bin_edges'."
                 )
 
             if k == 0:
@@ -333,7 +353,6 @@ class BaseBinMapper(ABC, BaseEstimator, TransformerMixin):
         unique_y, group_start = np.unique(sorted_y, return_index=True)
         max_w = np.maximum.reduceat(sorted_w, group_start)
 
-        # Create fitted attributes
         self.bin_edges_ = edges
         self.n_bins_ = n_bins
         self.grid_y_ = unique_y
