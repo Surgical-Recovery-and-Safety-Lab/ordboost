@@ -651,6 +651,12 @@ class TestIntervalCoverageRate:
         with pytest.raises(ValueError, match="Expected 'sample_weight' shape"):
             interval_coverage_rate([5.0], dist, sample_weight=[1.0, 2.0])
 
+    def test_alpha_invalid_range(self) -> None:
+        """Test that a ValueError is raised if alpha is not in the correct range."""
+        dist = MagicMock(spec=ContinuousPredictiveDistribution)
+        with pytest.raises(ValueError, match="must lie within"):
+            interval_coverage_rate([5.0], dist, alpha=-0.5)
+
 
 class TestSharpness:
     """Tests for sharpness."""
