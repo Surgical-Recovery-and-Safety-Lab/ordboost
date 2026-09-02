@@ -320,6 +320,35 @@ def pinball_loss_skill_score(
     return 1.0 - (loss_model / loss_baseline)
 
 
+def marginal_calibration_curve(
+    y_true: ArrayLike, dist: ContinuousPredictiveDistribution
+) -> tuple[np.ndarray, np.ndarray]:
+    """Computes the difference between the empirical CDF and the average CDF.
+
+    Parameters
+    ----------
+    y_true : ArrayLike of shape (n_samples,)
+        True continuous target values.
+    dist : ContinuousPredictiveDistribution
+        Predicted continuous distributions.
+
+    Returns
+    -------
+    grid_y : np.ndarray of shape (n_points,)
+        Grid points at which CDF were evaluated.
+    calibration : np.ndarray of shape (n_points,)
+        Marginal calibration.
+
+    """
+    y_true_arr = np.array(y_true, dtype=float)
+    grid_y = dist.grid_y
+
+    mean_cdf = dist.grid_cdf.mean(axis=0)
+    empirical_cdf = np.array([np.mean(y_true_arr <= x) for x in grid_y])
+
+    return grid_y, empirical_cdf - mean_cdf
+
+
 def interval_coverage_rate(
     y_true: ArrayLike,
     dist: ContinuousPredictiveDistribution,
