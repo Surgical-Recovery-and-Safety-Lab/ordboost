@@ -18,7 +18,7 @@ from ordboost.mappers import BaseBinMapper
 def baseline_distribution(
     y_train: ArrayLike, n_samples: int, boundary_epsilon: float = 1e-4
 ) -> ContinuousPredictiveDistribution:
-    """Construct a climatological (no-covariate) baseline distribution.
+    """Construct a no-covariate baseline distribution.
 
     Builds the unconditional empirical CDF of `y_train` and broadcasts it
     identically across `n_samples` rows, representing the best achievable
@@ -34,7 +34,7 @@ def baseline_distribution(
         "no covariate information" rather than "no information restricted
         to a subgroup" (see `crps_skill_score`).
     n_samples : int
-        Number of rows to broadcast the climatological CDF across, e.g.
+        Number of rows to broadcast the baseline CDF across, e.g.
         the number of samples in the evaluation set this baseline will be
         scored against.
     boundary_epsilon : float, default=1e-4
