@@ -7,7 +7,6 @@ from joblib import Parallel, delayed
 from numpy.typing import ArrayLike
 from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin, clone
 from sklearn.ensemble import HistGradientBoostingClassifier
-from sklearn.exceptions import NotFittedError
 from sklearn.utils.validation import check_array, check_is_fitted, check_X_y
 
 from ordboost.distributions import (
@@ -182,7 +181,9 @@ class OrdBoostClassifier(BaseEstimator, ClassifierMixin):
         estimator.fit(X, y_binary)
         return estimator
 
-    def fit(self, X: ArrayLike, y: ArrayLike) -> "OrdBoostClassifier":
+    def fit(
+        self, X: ArrayLike, y: ArrayLike, classes: Union[ArrayLike, None] = None
+    ) -> "OrdBoostClassifier":
         """Fit the ordinal gradient boosting model on training data.
 
         Trains one binary `HistGradientBoostingClassifier` per cumulative
@@ -196,8 +197,17 @@ class OrdBoostClassifier(BaseEstimator, ClassifierMixin):
             Training vector data. May contain NaN values, which are handled
             natively by the underlying `HistGradientBoostingClassifier`.
         y : array-like of shape (n_samples,)
-            Target values (ordinal class labels). Must contain at least 2
-            unique values.
+            Target values (ordinal class labels).
+        classes : array-like, optional
+            The full set of ordinal class labels the model should support,
+            including labels that may not appear in this particular `y`
+            (e.g. an empty bin in a specific training sample). If None
+            (default), classes are inferred from `np.unique(y)`. If
+            provided, `classes_` is set to this full sorted set, guaranteeing
+            `predict_proba`'s output width matches the caller's expected
+            class count regardless of which classes are actually observed --
+            the same convention scikit-learn uses in e.g.
+            `SGDClassifier.partial_fit(classes=...)`.
 
         Returns
         -------
@@ -207,8 +217,10 @@ class OrdBoostClassifier(BaseEstimator, ClassifierMixin):
         Raises
         ------
         ValueError
-            If `y` contains fewer than 2 unique classes, or if
-            `monotonicity` is not `"running_max"` or `"isotonic"`.
+            If `y` contains fewer than 2 unique classes when `classes` is
+            not provided, if `classes` has fewer than 2 elements, if `y`
+            contains a label not present in `classes`, or if `monotonicity`
+            is not `"running_max"` or `"isotonic"`.
 
         """
         X_arr, y_arr = check_X_y(
@@ -217,12 +229,24 @@ class OrdBoostClassifier(BaseEstimator, ClassifierMixin):
         self.n_features_in_ = X_arr.shape[1]
 
         unique_classes = np.unique(y_arr)
-        if len(unique_classes) < 2:
-            raise ValueError(
-                "OrdBoostClassifier requires at least 2 unique classes in y."
-            )
 
-        self.classes_ = np.sort(unique_classes)
+        if classes is not None:
+            classes_arr = np.sort(np.asarray(classes))
+            if len(classes_arr) < 2:
+                raise ValueError("'classes' must contain at least 2 unique values.")
+            if not np.all(np.isin(unique_classes, classes_arr)):
+                missing = np.setdiff1d(unique_classes, classes_arr)
+                raise ValueError(
+                    f"'y' contains class labels not present in 'classes': {missing}."
+                )
+            self.classes_ = classes_arr
+        else:
+            if len(unique_classes) < 2:
+                raise ValueError(
+                    "OrdBoostClassifier requires at least 2 unique classes in y."
+                )
+            self.classes_ = np.sort(unique_classes)
+
         n_classes = len(self.classes_)
 
         if self.monotonicity not in ("running_max", "isotonic"):
@@ -628,10 +652,10 @@ class OrdBoostRegressor(BaseEstimator, RegressorMixin):
             edges = np.quantile(y, quantiles)
             # Ensure unique edges if duplicates occur in dense regions
             edges = np.unique(edges)
-            if len(edges) < 2:
-                edges = np.linspace(np.min(y), np.max(y), self.n_bins + 1)
+            if len(edges) < 1:
+                edges = np.linspace(np.min(y), np.max(y), self.n_bins + 1)[1:-1]
         elif self.bin_strategy == "uniform":
-            edges = np.linspace(np.min(y), np.max(y), self.n_bins + 1)
+            edges = np.linspace(np.min(y), np.max(y), self.n_bins + 1)[1:-1]
         else:
             raise ValueError(f"Invalid bin_strategy '{self.bin_strategy}'.")
 
@@ -756,8 +780,8 @@ class OrdBoostRegressor(BaseEstimator, RegressorMixin):
 
         self.bin_edges_ = self._compute_bin_edges(y_arr)
         y_binned = BaseBinMapper.digitize(y_arr, self.bin_edges_, y_binned=None)
+        n_bins = len(self.bin_edges_) + 1
 
-        # Fit underlying OrdBoostClassifier
         self.classifier_ = OrdBoostClassifier(
             learning_rate=self.learning_rate,
             max_iter=self.max_iter,
@@ -769,7 +793,7 @@ class OrdBoostRegressor(BaseEstimator, RegressorMixin):
             random_state=self.random_state,
             **self.kwargs,
         )
-        self.classifier_.fit(X_arr, y_binned)
+        self.classifier_.fit(X_arr, y_binned, classes=np.arange(n_bins))
 
         # Resolve and fit bin mapper
         self.mapper_ = self._resolve_mapper()
