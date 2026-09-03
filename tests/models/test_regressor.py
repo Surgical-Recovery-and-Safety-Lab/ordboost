@@ -107,8 +107,8 @@ class TestComputeBinEdges:
         reg = OrdBoostRegressor(n_bins=4, bin_strategy="uniform")
         y = np.array([0.0, 100.0])
         edges = reg._compute_bin_edges(y)
-        assert len(edges) == 5
-        np.testing.assert_allclose(edges, [0.0, 25.0, 50.0, 75.0, 100.0])
+        assert len(edges) == 3
+        np.testing.assert_allclose(edges, [25.0, 50.0, 75.0])
 
     def test_bin_strategy_invalid_raises(self) -> None:
         """Test that an unrecognized bin_strategy raises ValueError."""
@@ -303,12 +303,12 @@ class TestFit:
         self, synthetic_data
     ) -> None:
         """Test that fitted y_binned values (indirectly, via classifier
-        classes_) never exceed n_bins - 1, guarding against the historical
-        off-by-one digitize bug that produced an extra out-of-range bin."""
+        classes_) never exceed n_bins - 1, guarding against a digitize
+        off-by-one producing an extra out-of-range bin."""
         X, y = synthetic_data
         reg = OrdBoostRegressor(n_bins=5, max_iter=5, random_state=42)
         reg.fit(X, y)
-        assert reg.classifier_.classes_.max() <= len(reg.bin_edges_) - 2
+        assert reg.classifier_.classes_.max() <= len(reg.bin_edges_)  # n_bins - 1
 
 
 class TestPredictDist:
