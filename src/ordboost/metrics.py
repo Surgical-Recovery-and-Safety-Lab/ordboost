@@ -490,6 +490,7 @@ def pit_diagnostics(
     y_true: ArrayLike,
     dist: ContinuousPredictiveDistribution,
     mapper: BaseBinMapper,
+    precision: int = 2,
 ) -> Pit:
     """Construct exact probability integral transform (PIT) diagnostics.
 
@@ -501,6 +502,8 @@ def pit_diagnostics(
     True), the left limit is taken from the point immediately before it
     (the second-to-last index). All other points are treated as
     continuous (`fcst_left == fcst_right`).
+    The data from the distribution is rounded to the given precision, to
+    avoid memory issues for large datasets.
 
     Parameters
     ----------
@@ -514,6 +517,8 @@ def pit_diagnostics(
         `ceiling_atom` flags determine which grid points are treated as
         atoms. Only these two boolean attributes are read; the mapper
         does not need to be fitted.
+    precision : int, default=2
+        Decimal precision to round the distribution data at.
 
     Returns
     -------
@@ -537,8 +542,8 @@ def pit_diagnostics(
             f"got shape {y_true_arr.shape}."
         )
 
-    fcst_right = dist.grid_cdf.copy()
-    fcst_left = dist.grid_cdf.copy()
+    fcst_right = np.round(dist.grid_cdf.copy(), precision)
+    fcst_left = np.round(dist.grid_cdf.copy(), precision)
 
     if getattr(mapper, "floor_atom", False):
         fcst_left[:, 1] = fcst_right[:, 0]
