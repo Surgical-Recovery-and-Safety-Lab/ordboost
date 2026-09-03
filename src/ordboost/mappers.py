@@ -163,7 +163,7 @@ class BaseBinMapper(ABC, BaseEstimator, TransformerMixin):
     def digitize(
         y_cont: np.ndarray,
         edges: np.ndarray,
-        y_binned: Union[ArrayLike, None],
+        y_binned: Union[ArrayLike, None] = None,
     ) -> np.ndarray:
         """Assign each continuous target to a 0-indexed discrete bin.
 
@@ -177,7 +177,7 @@ class BaseBinMapper(ABC, BaseEstimator, TransformerMixin):
             Continuous target values.
         edges : ndarray of shape (n_bins - 1,)
             Validated interior threshold edges.
-        y_binned : array-like of shape (n_samples,) or None
+        y_binned : array-like of shape (n_samples,) or None, default=None
             Pre-computed 0-indexed bin labels. If None, labels are
             derived from `edges` via `numpy.digitize`.
 
