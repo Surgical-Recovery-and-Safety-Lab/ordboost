@@ -20,15 +20,15 @@ class TestInit:
         mapper = UniformBinMapper(
             bin_edges=[0.0, 10.0],
             n_points=3,
-            bounded_below=False,
+            lower_bound=None,
             ceiling_atom=True,
-            bounded_above=True,
+            upper_bound=10.0,
             boundary_epsilon=0.01,
         )
         assert mapper.bin_edges == [0.0, 10.0]
         assert mapper.n_points == 3
-        assert mapper.bounded_below is False
-        assert mapper.bounded_above is True
+        assert mapper.lower_bound is None
+        assert mapper.upper_bound is 10.0
         assert mapper.ceiling_atom is True
         assert mapper.boundary_epsilon == 0.01
 
@@ -166,6 +166,6 @@ class TestTransformIntegration:
         """Test that transform's output equals to_continuous_dist(pmf).mean()."""
         mapper = UniformBinMapper(bin_edges=[0.0, 10.0, 20.0], n_points=2)
         mapper.fit(np.array([2.0, 8.0, 12.0, 18.0]))
-        pmf = np.array([[0.6, 0.4]])
+        pmf = np.array([[0.2, 0.1, 0.2, 0.5]])
         dist = mapper.to_continuous_dist(pmf)
         np.testing.assert_allclose(mapper.transform(pmf), dist.mean())

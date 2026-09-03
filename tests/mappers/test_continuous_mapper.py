@@ -137,21 +137,21 @@ class TestFitIntegration:
         """Test that after fit with resolution=1.0, grid_y_ contains
         every achievable integer value, matching the DAOH use case."""
         mapper = ContinuousBinMapper(
-            bin_edges=[0.0, 5.0], resolution=1.0, bounded_below=False
+            bin_edges=[0.0, 5.0], resolution=1.0, lower_bound=None
         )
         mapper.fit(np.array([1.0, 4.0]))
         for val in range(0, 5):
             assert np.any(np.isclose(mapper.grid_y_, float(val)))
 
     def test_nominal_edges_included_when_unbounded(self) -> None:
-        """Test that with bounded_below=False and bounded_above=False, the
+        """Test that with lower_bound=None and upper_bound=None, the
         nominal bin_edges appear in the grid even when observed data doesn't
         reach them."""
         mapper = ContinuousBinMapper(
             bin_edges=[0.0, 5.0],
             resolution=1.0,
-            bounded_below=False,
-            bounded_above=False,
+            lower_bound=None,
+            upper_bound=None,
         )
         mapper.fit(np.array([1.0, 2.0, 3.0, 4.0]))
         assert np.any(np.isclose(mapper.grid_y_, 0.0))
@@ -176,6 +176,6 @@ class TestTransformIntegration:
         """Test that transform's output equals to_continuous_dist(pmf).mean()."""
         mapper = ContinuousBinMapper(bin_edges=[0.0, 10.0, 20.0], resolution=2.0)
         mapper.fit(np.array([2.0, 8.0, 12.0, 18.0]))
-        pmf = np.array([[0.6, 0.4]])
+        pmf = np.array([[0.2, 0.4, 0.1, 0.3]])
         dist = mapper.to_continuous_dist(pmf)
         np.testing.assert_allclose(mapper.transform(pmf), dist.mean())

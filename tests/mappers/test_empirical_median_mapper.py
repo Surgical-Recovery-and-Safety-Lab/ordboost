@@ -112,7 +112,7 @@ class TestFitIntegration:
     def test_fitted_grid_contains_empirical_median_point(self) -> None:
         """Test that after fit, grid_y_ contains the bin's empirical
         median with the correct empirical weight."""
-        mapper = EmpiricalMedianBinMapper(bin_edges=[10.0, 20.0])
+        mapper = EmpiricalMedianBinMapper(bin_edges=[20.0])
         y_cont = np.array([10.5, 11.0, 12.0, 13.0, 19.0])  # median = 12.0
         mapper.fit(y_cont)
 
@@ -131,7 +131,7 @@ class TestTransformIntegration:
         to_continuous_dist(pmf).median(), not .mean()."""
         mapper = EmpiricalMedianBinMapper(bin_edges=[0.0, 10.0, 20.0])
         mapper.fit(np.array([1.0, 1.0, 1.0, 15.0, 15.0, 19.0]))
-        pmf = np.array([[0.7, 0.3]])
+        pmf = np.array([[0.2, 0.3, 0.4, 0.1]])
         dist = mapper.to_continuous_dist(pmf)
         np.testing.assert_allclose(mapper.transform(pmf), dist.median())
 
@@ -143,7 +143,9 @@ class TestTransformIntegration:
         class's .mean() implementation."""
         mapper = EmpiricalMedianBinMapper(bin_edges=[0.0, 10.0, 100.0])
         mapper.fit(np.array([1.0, 2.0, 3.0, 95.0, 98.0]))
-        pmf = np.array([[0.1, 0.9]])  # most mass in the wide, skewed upper bin
+        pmf = np.array(
+            [[0.05, 0.01, 0.04, 0.9]]
+        )  # most mass in the wide, skewed upper bin
         dist = mapper.to_continuous_dist(pmf)
         median_result = mapper.transform(pmf)
         mean_result = dist.mean()

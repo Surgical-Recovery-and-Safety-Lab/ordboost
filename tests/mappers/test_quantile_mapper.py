@@ -125,7 +125,7 @@ class TestFitIntegration:
     def test_fitted_grid_contains_all_quantile_points(self) -> None:
         """Test that after fit, grid_y_ contains a point for every fitted
         quantile level, correctly positioned by empirical value."""
-        mapper = QuantileBinMapper(bin_edges=[10.0, 20.0], quantiles=(0.25, 0.5, 0.75))
+        mapper = QuantileBinMapper(bin_edges=[10.0, 25.0], quantiles=(0.25, 0.5, 0.75))
         bin_data = np.array([10.0, 12.0, 14.0, 16.0, 18.0, 20.0])
         mapper.fit(bin_data)
 
@@ -143,26 +143,31 @@ class TestFitIntegration:
         mapper = QuantileBinMapper(
             bin_edges=[0.0, 10.0, 11.0, 20.0], quantiles=(0.25, 0.5, 0.75)
         )
-        # bin 1 spans [10, 11) with all its data at the shared edge y=10.0
+        # bin 2 spans [10, 11) with all its data at the shared edge y=10.0
         mapper.fit(np.array([1.0, 10.0, 10.0, 10.0, 10.0, 15.0]))
 
-        # Colliding weights at y=10.0: bin 0's boundary (1.0) and bin 1's
+        # Colliding weights at y=10.0: bin 1's boundary (1.0) and bin 2's
         # three quantile points (1.25, 1.5, 1.75) -- max should win.
         idx = np.searchsorted(mapper.grid_y_, 10.0)
         assert mapper.grid_y_[idx] == pytest.approx(10.0)
-        assert mapper.grid_cdf_weights_[idx] == pytest.approx(1.75)
+        assert mapper.grid_cdf_weights_[idx] == pytest.approx(2.75)
 
     def test_zero_width_bin_from_degenerate_data_does_not_raise(self) -> None:
-        """Test that a single-bin mapper whose entire training data is one
-        repeated value produces a zero-width (low == high) bin without
-        raising, collapsing correctly to weight 1.0 at that point.
+        """Test that a bin whose resolved range collapses to a single point
+        (via matching lower_bound/upper_bound) produces a zero-width bin
+        without raising, with all quantile points and the boundary correctly
+        deduplicating to weight 1.0 at that point.
         """
-        mapper = QuantileBinMapper(bin_edges=[10.0, 11.0], quantiles=(0.25, 0.5, 0.75))
+        mapper = QuantileBinMapper(
+            bin_edges=[10.0],
+            quantiles=(0.25, 0.5, 0.75),
+            lower_bound=10.0,
+            upper_bound=10.0,
+        )
         mapper.fit(np.array([10.0, 10.0, 10.0, 10.0]))
-
         idx = np.searchsorted(mapper.grid_y_, 10.0)
         assert mapper.grid_y_[idx] == pytest.approx(10.0)
-        assert mapper.grid_cdf_weights_[idx] == pytest.approx(1.0)
+        assert mapper.grid_cdf_weights_[idx] == pytest.approx(2.0)
 
 
 class TestTransformIntegration:
@@ -176,6 +181,6 @@ class TestTransformIntegration:
         default (unlike EmpiricalMedianBinMapper)."""
         mapper = QuantileBinMapper(bin_edges=[0.0, 10.0, 20.0])
         mapper.fit(np.array([1.0, 4.0, 6.0, 15.0, 15.0, 19.0]))
-        pmf = np.array([[0.7, 0.3], [0.2, 0.8]])
+        pmf = np.array([[0.2, 0.3, 0.4, 0.1], [0.1, 0.7, 0.1, 0.1]])
         dist = mapper.to_continuous_dist(pmf)
         np.testing.assert_allclose(mapper.transform(pmf), dist.mean())

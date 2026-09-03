@@ -114,7 +114,7 @@ class TestFitIntegration:
     def test_fitted_grid_contains_empirical_mean_point(self) -> None:
         """Test that after fit, grid_y_ contains the bin's empirical mean
         (not the geometric midpoint) with the correct empirical weight."""
-        mapper = EmpiricalMeanBinMapper(bin_edges=[10.0, 20.0])
+        mapper = EmpiricalMeanBinMapper(bin_edges=[20.0])
         y_cont = np.array([11.0, 12.0, 12.0, 19.0])  # mean = 13.5
         mapper.fit(y_cont)
 
@@ -147,6 +147,6 @@ class TestTransformIntegration:
         confirming the mapper does not override the inherited default."""
         mapper = EmpiricalMeanBinMapper(bin_edges=[0.0, 10.0, 20.0])
         mapper.fit(np.array([2.0, 4.0, 6.0, 15.0, 15.0, 19.0]))
-        pmf = np.array([[0.7, 0.3], [0.2, 0.8]])
+        pmf = np.array([[0.2, 0.3, 0.4, 0.1], [0.1, 0.7, 0.1, 0.1]])
         dist = mapper.to_continuous_dist(pmf)
         np.testing.assert_allclose(mapper.transform(pmf), dist.mean())
