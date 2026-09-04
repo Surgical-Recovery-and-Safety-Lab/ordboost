@@ -6,7 +6,7 @@ import numpy as np
 import xarray as xr
 from numpy.typing import ArrayLike
 from scipy.stats import kstest
-from scores.probability import Pit, crps_cdf
+from scores.probability import Pit, PitFcstAtObs, crps_cdf
 
 from ordboost.distributions import (
     ContinuousPredictiveDistribution,
@@ -490,20 +490,16 @@ def pit_diagnostics(
     y_true: ArrayLike,
     dist: ContinuousPredictiveDistribution,
     mapper: BaseBinMapper,
-    precision: int = 2,
+    precision: Union[int, None] = 2,
 ) -> Pit:
-    """Construct exact probability integral transform (PIT) diagnostics.
+    """Construct exact PIT diagnostics using only per-sample scalars
+    (O(n_samples)), not the full CDF grid (O(n_samples * n_grid_points)).
 
-    The left-hand-limit grid is constructed directly from `dist.grid_cdf`
-    using `mapper`'s `floor_atom`/`ceiling_atom` flags: at the floor atom
-    point (index 1, if `floor_atom` is True), the left limit is taken
-    from the padding anchor immediately before it (index 0, forced to
-    0.0); at the ceiling atom point (the last index, if `ceiling_atom` is
-    True), the left limit is taken from the point immediately before it
-    (the second-to-last index). All other points are treated as
-    continuous (`fcst_left == fcst_right`).
+    Computes F(y_true) and its left-hand limit F(y_true-) directly via
+    dist.cdf(), rather than handing the entire grid_cdf array to `Pit`'s
+    threshold-dimension mode.
     The data from the distribution is rounded to the given precision, to
-    avoid memory issues for large datasets.
+    avoid memory issues for large datasets, unless precision is `None`.
 
     Parameters
     ----------
@@ -517,13 +513,15 @@ def pit_diagnostics(
         `ceiling_atom` flags determine which grid points are treated as
         atoms. Only these two boolean attributes are read; the mapper
         does not need to be fitted.
-    precision : int, default=2
-        Decimal precision to round the distribution data at.
+    precision : int or None, default=2
+        Number of decimal places to round `fcst_at_obs`/`fcst_at_obs_left`
+        to before constructing `PitFcstAtObs`.
+        Pass `None` to disable rounding entirely.
 
     Returns
     -------
-    scores.probability.Pit
-        A fitted `Pit` object exposing `.hist_values(n_bins)`,
+    scores.probability.PitFcstAtObs
+        A fitted `PitFcstAtObs` object exposing `.hist_values(n_bins)`,
         `.plotting_points()`, `.plotting_points_parametric()`,
         `.expected_value()`, `.variance()`, and `.alpha_score()` for
         calibration diagnostics and summary statistics.
@@ -531,9 +529,22 @@ def pit_diagnostics(
     Raises
     ------
     ValueError
-        If `y_true`'s length does not match `dist.grid_cdf`'s sample count.
+        If `y_true`'s length does not match `dist.grid_cdf`'s sample
+        count, or if `precision` is not None and is not strictly
+        positive.
+    TypeError
+        If `precision` is not None and is not an integer.
 
     """
+    if precision is not None:
+        if isinstance(precision, bool) or not isinstance(precision, (int, np.integer)):
+            raise TypeError(
+                f"Expected 'precision' to be an int or None, got "
+                f"{type(precision).__name__}."
+            )
+        if precision <= 0:
+            raise ValueError(f"'precision' must be greater than 0, got {precision}.")
+
     y_true_arr = np.asarray(y_true, dtype=float)
     n_samples = dist.grid_cdf.shape[0]
     if y_true_arr.shape != (n_samples,):
@@ -542,25 +553,28 @@ def pit_diagnostics(
             f"got shape {y_true_arr.shape}."
         )
 
-    fcst_right = np.round(dist.grid_cdf.copy(), precision)
-    fcst_left = np.round(dist.grid_cdf.copy(), precision)
+    fcst_at_obs = dist.cdf(y_true_arr)
+    fcst_at_obs_left = fcst_at_obs.copy()
 
     if getattr(mapper, "floor_atom", False):
-        fcst_left[:, 1] = fcst_right[:, 0]
+        floor_value = dist.grid_y[1]
+        at_floor = np.isclose(y_true_arr, floor_value)
+        fcst_at_obs_left[at_floor] = 0.0  # nothing lies below the true floor
+
     if getattr(mapper, "ceiling_atom", False):
-        fcst_left[:, -1] = fcst_right[:, -2]
+        ceiling_value = dist.grid_y[-1]
+        at_ceiling = np.isclose(y_true_arr, ceiling_value)
+        # per-sample value just before the ceiling, for atom samples only
+        fcst_at_obs_left[at_ceiling] = dist.grid_cdf[at_ceiling, -2]
 
-    fcst_right_da = xr.DataArray(
-        fcst_right, dims=["sample", "threshold"], coords={"threshold": dist.grid_y}
-    )
-    fcst_left_da = xr.DataArray(
-        fcst_left, dims=["sample", "threshold"], coords={"threshold": dist.grid_y}
-    )
-    obs_da = xr.DataArray(y_true_arr, dims=["sample"])
+    if precision is not None:
+        fcst_at_obs = np.round(fcst_at_obs, precision)
+        fcst_at_obs_left = np.round(fcst_at_obs_left, precision)
 
-    return Pit(
-        fcst_right_da, obs_da, cdf_threshold_dim="threshold", fcst_left=fcst_left_da
-    )
+    fcst_da = xr.DataArray(fcst_at_obs, dims=["sample"])
+    fcst_left_da = xr.DataArray(fcst_at_obs_left, dims=["sample"])
+
+    return PitFcstAtObs(fcst_da, fcst_at_obs_left=fcst_left_da)
 
 
 def pit_ks_test(pit: Pit) -> tuple[float, float]:
