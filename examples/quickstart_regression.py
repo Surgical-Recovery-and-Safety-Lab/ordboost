@@ -32,4 +32,4 @@ print(
     f"Predicted Median: {y_pred_median[0]:.2f} "
     f"[80% PI: {lower_80[0]:.2f}, {upper_80[0]:.2f}]"
 )
-print(f"P(Y <= 3.0): {prob_under_3[0]:.2%}\n")
+print(f"P(Y <= 3.0): {prob_under_3[0]:.2%}")
