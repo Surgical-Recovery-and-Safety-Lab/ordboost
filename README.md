@@ -140,4 +140,4 @@ for i in range(len(X_test)):
 
 ## Acknowledgements
 
-This package was developed using Gemini 3.6 Thinking. The code was reviewed and edited by humans.
+This package was developed using Gemini 3.6 Thinking and Claude Sonnet 5. The code was reviewed and edited by humans.
