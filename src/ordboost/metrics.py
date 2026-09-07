@@ -491,7 +491,7 @@ def pit_diagnostics(
     dist: ContinuousPredictiveDistribution,
     mapper: BaseBinMapper,
     precision: Union[int, None] = 2,
-) -> Pit:
+) -> PitFcstAtObs:
     """Construct exact PIT diagnostics using only per-sample scalars
     (O(n_samples)), not the full CDF grid (O(n_samples * n_grid_points)).
 
