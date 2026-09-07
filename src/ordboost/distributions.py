@@ -29,13 +29,82 @@ class PredictiveDistribution(ABC):
 
     @abstractmethod
     def mean(self) -> np.ndarray:
-        """Calculate the expected value for each sample."""
-        pass
+        """Calculate the expected value for each sample.
+
+        Returns
+        -------
+        np.ndarray
+            1D array of shape (n_samples,) containing expected values in
+            physical target units.
+
+        Notes
+        -----
+        Implementations must ensure the underlying distribution's total
+        probability mass is fully accounted for (e.g. PMF rows summing to
+        1.0, or a CDF grid spanning exactly [0.0, 1.0]) for this to return
+        an unbiased estimate. Concrete subclasses enforce this at
+        construction time rather than here.
+
+        """
+        ...
 
     @abstractmethod
-    def ppf(self, q: Union[float, np.ndarray]) -> np.ndarray:
-        """Percent Point Function (inverse CDF / quantile calculation)."""
-        pass
+    def _ppf(self, q_arr: np.ndarray) -> np.ndarray:
+        """Compute the percent point function for a validated quantile array.
+
+        Called by the public `ppf` after `q` has already been validated to
+        be a scalar or 1D array with values in [0.0, 1.0]. Subclasses
+        should not re-validate `q_arr`.
+
+        Parameters
+        ----------
+        q_arr : np.ndarray
+            Validated quantile level(s): either a 0D (scalar) or 1D array,
+            with all values in [0.0, 1.0].
+
+        Returns
+        -------
+        np.ndarray
+            If `q_arr` is 0D, returns a 1D array of shape (n_samples,).
+            If `q_arr` is 1D of length `n_quantiles`, returns a 2D array
+            of shape (n_samples, n_quantiles).
+
+        """
+        ...
+
+    def ppf(self, q: Union[float, ArrayLike]) -> np.ndarray:
+        """Percent Point Function (inverse CDF / quantile calculation).
+
+        Validates `q` once, then delegates to the subclass's `_ppf`.
+
+        Parameters
+        ----------
+        q : float | ArrayLike
+            Quantile level(s). Can be a single scalar or a 1D array-like
+            of quantiles, with all values in [0.0, 1.0].
+
+        Returns
+        -------
+        np.ndarray
+            If `q` is a scalar, returns a 1D array of shape (n_samples,).
+            If `q` is a 1D array of length `n_quantiles`, returns a 2D
+            array of shape (n_samples, n_quantiles).
+
+        Raises
+        ------
+        ValueError
+            If `q` is not a scalar or 1D array, or if any value in `q`
+            lies outside [0.0, 1.0].
+
+        """
+        q_arr = np.asarray(q, dtype=float)
+        if q_arr.ndim not in (0, 1):
+            raise ValueError(
+                f"Expected 'q' to be a scalar or 1D array, got a {q_arr.ndim}D array."
+            )
+        if np.any((q_arr < 0.0) | (q_arr > 1.0)):
+            raise ValueError("All quantiles in 'q' must lie within [0.0, 1.0].")
+        return self._ppf(q_arr)
 
     def median(self) -> np.ndarray:
         """Calculate the 50th percentile (median) prediction for each sample.
@@ -75,34 +144,61 @@ class PredictiveDistribution(ABC):
         bounds = self.ppf(np.array([lower_q, upper_q]))
         return bounds[:, 0], bounds[:, 1]
 
+    @staticmethod
+    def _validate_strictly_ascending(name: str, arr: np.ndarray) -> None:
+        """Validate that a 1D array is strictly increasing.
+
+        Shared by subclasses whose interpolation/lookup logic (e.g.
+        `np.interp`, `np.argmax` over a CDF) requires an ordered axis to
+        behave correctly -- silently, not with an error, if violated.
+
+        Parameters
+        ----------
+        name : str
+            Name of the array being validated, used in the error message.
+        arr : np.ndarray
+            1D array to validate.
+
+        Raises
+        ------
+        ValueError
+            If `arr` is not strictly increasing.
+
+        """
+        if np.any(np.diff(arr) <= 0.0):
+            raise ValueError(f"'{name}' must be strictly ascending.")
+
 
 class DiscretePredictiveDistribution(PredictiveDistribution):
     """Encapsulates a discrete Probability Mass Function (PMF) matrix.
 
     Provides vectorized utilities for computing cumulative distribution
-    functions (CDF), percent point functions (quantiles/PPF), expected values,
-    medians, and prediction intervals across samples.
+    functions (CDF), percent point functions (quantiles/PPF), expected
+    values, medians, and prediction intervals across samples.
 
     Parameters
     ----------
     pmf : np.ndarray
         A 2D float array of shape (n_samples, n_classes) representing the
-        predicted probability for each discrete target class. Values along
-        each row must sum to 1.0.
+        predicted probability for each discrete target class. Values
+        along each row must sum to 1.0 (within floating-point tolerance).
     classes : np.ndarray
-        A 1D array of shape (n_classes,) representing the physical ordinal
-        class labels in strictly ascending order.
+        A 1D array of shape (n_classes,) representing the physical
+        ordinal class labels in strictly ascending order.
 
     Attributes
     ----------
     pmf : np.ndarray
-        A 2D float array of shape (n_samples, n_classes) containing predicted
-        class probabilities.
+        A 2D float array of shape (n_samples, n_classes) containing
+        validated predicted class probabilities as a read-only object.
     classes : np.ndarray
-        A 1D array of shape (n_classes,) containing the ordinal class labels.
+        A 1D array of shape (n_classes,) containing the validated ordinal
+        class labels as a read-only object.
     cdf : np.ndarray
-        A 2D float array of shape (n_samples, n_classes) containing cumulative
-        probabilities computed from `pmf`.
+        A 2D float array of shape (n_samples, n_classes) containing
+        cumulative probabilities computed from `pmf`. The final column is
+        forced to exactly 1.0 to guard against floating-point PMF row
+        sums fractionally below 1.0.
 
     Methods
     -------
@@ -118,10 +214,14 @@ class DiscretePredictiveDistribution(PredictiveDistribution):
     Raises
     ------
     ValueError
-        If `pmf` is not a 2D array, `classes` is not a 1D array, or the
-        number of columns in `pmf` does not match the length of `classes`.
+        If `pmf` is not a 2D array, `classes` is not a 1D array, the
+        number of columns in `pmf` does not match the length of
+        `classes`, `classes` is not strictly ascending, or any row of
+        `pmf` does not sum to 1.0 within tolerance.
 
     """
+
+    _PMF_SUM_ATOL = 1e-6
 
     def __init__(self, pmf: np.ndarray, classes: np.ndarray) -> None:
         pmf_arr = np.asarray(pmf, dtype=float)
@@ -142,9 +242,38 @@ class DiscretePredictiveDistribution(PredictiveDistribution):
                 f"and classes array length ({classes_arr.shape[0]})."
             )
 
-        self.pmf = pmf_arr
-        self.classes = classes_arr
+        self._validate_strictly_ascending("classes", classes_arr.astype(float))
+        self._validate_normalized_pmf(pmf_arr)
+
+        self.pmf = pmf_arr.copy()
+        self.classes = classes_arr.copy()
+        self.pmf.flags.writeable = False  # Convert to read-only
+        self.classes.flags.writeable = False  # Convert to read-only
         self._cdf: np.ndarray | None = None
+
+    @staticmethod
+    def _validate_normalized_pmf(pmf: np.ndarray, atol: float = _PMF_SUM_ATOL) -> None:
+        """Validate that every row of a PMF matrix sums to 1.0.
+
+        Parameters
+        ----------
+        pmf : np.ndarray
+            2D array of shape (n_samples, n_classes).
+        atol : float, default=1e-6
+            Absolute tolerance for the row-sum comparison.
+
+        Raises
+        ------
+        ValueError
+            If any row of `pmf` does not sum to 1.0 within `atol`.
+
+        """
+        row_sums = pmf.sum(axis=1)
+        if not np.allclose(row_sums, 1.0, atol=atol):
+            raise ValueError(
+                "Every row of 'pmf' must sum to 1.0 within tolerance; "
+                f"got sums ranging [{row_sums.min():.6f}, {row_sums.max():.6f}]."
+            )
 
     @property
     def cdf(self) -> np.ndarray:
@@ -153,11 +282,17 @@ class DiscretePredictiveDistribution(PredictiveDistribution):
         Returns
         -------
         np.ndarray
-            2D array of shape (n_samples, n_classes) containing cumulative probabilities.
+            2D array of shape (n_samples, n_classes) containing cumulative
+            probabilities. The final column is forced to exactly 1.0 to
+            guard against `ppf(1.0)` silently returning the wrong (lowest)
+            class if a PMF row's floating-point sum falls fractionally
+            short of 1.0.
 
         """
         if self._cdf is None:
-            self._cdf = np.clip(np.cumsum(self.pmf, axis=1), 0.0, 1.0)
+            cum = np.clip(np.cumsum(self.pmf, axis=1), 0.0, 1.0)
+            cum[:, -1] = 1.0
+            self._cdf = cum
         return self._cdf
 
     def mean(self) -> np.ndarray:
@@ -172,34 +307,20 @@ class DiscretePredictiveDistribution(PredictiveDistribution):
         """
         return np.dot(self.pmf, self.classes)
 
-    def ppf(self, q: Union[float, np.ndarray]) -> np.ndarray:
-        """Percent Point Function (inverse CDF / quantile calculation).
-
-        Maps quantile probabilities back to discrete physical class levels.
+    def _ppf(self, q_arr: np.ndarray) -> np.ndarray:
+        """Map validated quantile probabilities to discrete class levels.
 
         Parameters
         ----------
-        q : float | np.ndarray
-            Quantile level(s) in the range [0.0, 1.0]. Can be a single scalar
-            or an array of quantiles.
+        q_arr : np.ndarray
+            Validated quantile level(s); see `PredictiveDistribution._ppf`.
 
         Returns
         -------
         np.ndarray
-            If `q` is a scalar, returns a 1D array of shape (n_samples,).
-            If `q` is 1D array of length `n_quantiles`, returns a 2D array of
-            shape (n_samples, n_quantiles).
-
-        Raises
-        ------
-        ValueError
-            If any quantile in `q` lies outside [0.0, 1.0].
+            See `PredictiveDistribution._ppf`.
 
         """
-        q_arr = np.asarray(q, dtype=float)
-        if np.any((q_arr < 0.0) | (q_arr > 1.0)):
-            raise ValueError("All quantiles in 'q' must lie within [0.0, 1.0].")
-
         cdf = self.cdf
         if q_arr.ndim == 0:
             indices = np.argmax(cdf >= q_arr, axis=1)
@@ -214,25 +335,28 @@ class DiscretePredictiveDistribution(PredictiveDistribution):
 class ContinuousPredictiveDistribution(PredictiveDistribution):
     """Encapsulates a continuous predictive Cumulative Distribution Function (CDF).
 
-    Provides vectorized utilities for computing expected continuous values,
-    medians, percent point functions (quantiles/PPF), central prediction
-    intervals, and continuous CDF probabilities across samples.
+    Provides vectorized utilities for computing expected continuous
+    values, medians, percent point functions (quantiles/PPF), central
+    prediction intervals, and continuous CDF probabilities across samples.
 
     Parameters
     ----------
     grid_y : np.ndarray
-        1D float array of shape (n_grid_points,) representing continuous physical
-        target grid values in strictly ascending order.
+        1D float array of shape (n_grid_points,) representing continuous
+        physical target grid values in strictly ascending order.
     grid_cdf : np.ndarray
-        2D float array of shape (n_samples, n_grid_points) containing evaluated
-        cumulative probabilities across grid points.
+        2D float array of shape (n_samples, n_grid_points) containing
+        evaluated cumulative probabilities across grid points. Every
+        row's first value must be 0.0 and last value must be 1.0 (within
+        tolerance) for `mean()` to return an unbiased estimate.
 
     Attributes
     ----------
     grid_y : np.ndarray
-        1D float array containing grid values.
+        1D float array containing grid values as a read-only object.
     grid_cdf : np.ndarray
-        2D float array containing cumulative probabilities bounded in [0.0, 1.0].
+        2D float array containing cumulative probabilities, clipped to
+        [0.0, 1.0] as a read-only object.
 
     Methods
     -------
@@ -240,15 +364,23 @@ class ContinuousPredictiveDistribution(PredictiveDistribution):
         Calculate expected continuous values via numerical integration.
     ppf(q)
         Calculate percent point function (inverse CDF / quantiles).
+    median()
+        Calculate the 50th percentile prediction for each sample.
+    interval(alpha=0.10)
+        Calculate central prediction bounds for a given significance level.
     cdf(y)
         Evaluate continuous CDF probability P(Y <= y) at physical value y.
 
     Raises
     ------
     ValueError
-        If `grid_y` is not 1D, `grid_cdf` is not 2D, or shape dimensions mismatch.
+        If `grid_y` is not 1D, `grid_cdf` is not 2D, shape dimensions
+        mismatch, `grid_y` is not strictly ascending, or any row of
+        `grid_cdf` does not start at 0.0 or end at 1.0 within tolerance.
 
     """
+
+    _CDF_BOUNDARY_ATOL = 1e-6
 
     def __init__(self, grid_y: np.ndarray, grid_cdf: np.ndarray) -> None:
         y_arr = np.asarray(grid_y, dtype=float)
@@ -259,140 +391,136 @@ class ContinuousPredictiveDistribution(PredictiveDistribution):
         if cdf_arr.shape[1] != y_arr.shape[0]:
             raise ValueError("Grid CDF column dimension must match grid_y length.")
 
-        self.grid_y = y_arr
-        self.grid_cdf = np.clip(cdf_arr, 0.0, 1.0)
+        self._validate_strictly_ascending("grid_y", y_arr)
+        cdf_arr = np.clip(cdf_arr, 0.0, 1.0)
+        self._validate_normalized_cdf_grid(cdf_arr)
+
+        self.grid_y = y_arr.copy()
+        self.grid_y.flags.writeable = False  # Convert to read-only
+        self.grid_cdf = cdf_arr.copy()
+        self.grid_cdf.flags.writeable = False  # Convert to read-only
         self._n_samples = cdf_arr.shape[0]
+
+    @staticmethod
+    def _validate_normalized_cdf_grid(
+        grid_cdf: np.ndarray, atol: float = _CDF_BOUNDARY_ATOL
+    ) -> None:
+        """Validate that every row of a CDF grid starts at 0.0 and ends at 1.0.
+
+        Parameters
+        ----------
+        grid_cdf : np.ndarray
+            2D array of shape (n_samples, n_grid_points), already clipped
+            to [0.0, 1.0].
+        atol : float, default=1e-6
+            Absolute tolerance for the boundary comparisons.
+
+        Raises
+        ------
+        ValueError
+            If any row's first value is not close to 0.0, or last value
+            is not close to 1.0.
+
+        """
+        if not np.allclose(grid_cdf[:, 0], 0.0, atol=atol):
+            raise ValueError(
+                "Every row of 'grid_cdf' must start at 0.0 (grid_cdf[:, 0])."
+            )
+        if not np.allclose(grid_cdf[:, -1], 1.0, atol=atol):
+            raise ValueError(
+                "Every row of 'grid_cdf' must end at 1.0 (grid_cdf[:, -1])."
+            )
 
     def mean(self) -> np.ndarray:
         """Calculate expected continuous values via numerical integration.
 
+        Uses the identity ``E[Y] = grid_y[0] + integral_{grid_y[0]}^{grid_y[-1]}
+        (1 - F(y)) dy``, evaluated by the trapezoidal rule. Correctness
+        relies on `grid_cdf` starting at 0.0 and ending at 1.0, which is
+        enforced at construction time.
+
         Returns
         -------
         np.ndarray
-            1D array of shape (n_samples,) containing expected physical values.
+            1D array of shape (n_samples,) containing expected physical
+            values.
 
         """
         dy = np.diff(self.grid_y)
         avg_prob = 1.0 - 0.5 * (self.grid_cdf[:, :-1] + self.grid_cdf[:, 1:])
         return np.sum(avg_prob * dy, axis=1) + self.grid_y[0]
 
-    def ppf(self, q: Union[float, ArrayLike]) -> np.ndarray:
-        """Calculate continuous interpolated values at quantile level `q`.
+    def _ppf(self, q_arr: np.ndarray) -> np.ndarray:
+        """Interpolate continuous target values at validated quantile levels.
 
         Parameters
         ----------
-        q : float | ArrayLike
-            Quantile level(s) strictly in the range [0.0, 1.0].
+        q_arr : np.ndarray
+            Validated quantile level(s); see `PredictiveDistribution._ppf`.
 
         Returns
         -------
         np.ndarray
-            If `q` is a scalar, returns a 1D array of shape (n_samples,).
-            If `q` is a 1D array of length `n_quantiles`, returns a 2D array
-            of shape (n_samples, n_quantiles).
-
-        Raises
-        ------
-        ValueError
-            If any quantile in `q` lies outside [0.0, 1.0].
-            If `q` is not a 1D array or a float.
+            See `PredictiveDistribution._ppf`.
 
         """
-        q_arr = np.asarray(q, dtype=float)
-        if np.any((q_arr < 0.0) | (q_arr > 1.0)):
-            raise ValueError("All quantiles in 'q' must lie within [0.0, 1.0].")
-
         n_samples, n_grid = self.grid_cdf.shape
 
-        # 1. Scalar quantile query -> returns shape (n_samples,)
         if q_arr.ndim == 0:
-            q_val = q_arr.item()
+            q_val = float(q_arr)
             idx = np.clip(
-                np.count_nonzero(self.grid_cdf <= q_val, axis=1) - 1,
-                0,
-                n_grid - 2,
+                np.count_nonzero(self.grid_cdf <= q_val, axis=1) - 1, 0, n_grid - 2
             )
             rows = np.arange(n_samples)
             q0, q1 = self.grid_cdf[rows, idx], self.grid_cdf[rows, idx + 1]
-            t = np.clip((q_val - q0) / (q1 - q0), 0.0, 1.0)
+            denom = q1 - q0
+            t = np.divide(q_val - q0, denom, out=np.zeros_like(q0), where=denom != 0)
+            t = np.clip(t, 0.0, 1.0)
             return (1.0 - t) * self.grid_y[idx] + t * self.grid_y[idx + 1]
 
-        # 2. Array quantile query -> returns shape (n_samples, n_quantiles)
-        if q_arr.ndim == 1:
-            grid_cdf_ = self.grid_cdf[:, np.newaxis, :]
-            grid_q_arr = q_arr[np.newaxis, :, np.newaxis]
-
-            idx = np.clip(
-                np.count_nonzero(grid_cdf_ <= grid_q_arr, axis=2) - 1,
-                0,
-                n_grid - 2,
-            )
-            q0 = np.take_along_axis(self.grid_cdf, idx, axis=1)
-            q1 = np.take_along_axis(self.grid_cdf, idx + 1, axis=1)
-            t = np.clip((q_arr[np.newaxis, :] - q0) / (q1 - q0), 0.0, 1.0)
-            return (1.0 - t) * self.grid_y[idx] + t * self.grid_y[idx + 1]
-
-        raise ValueError("Quantile 'q' must be a scalar float or a 1D array.")
+        return np.stack([self._ppf(np.asarray(q)) for q in q_arr], axis=1)
 
     def cdf(self, y: Union[float, ArrayLike]) -> np.ndarray:
-        """Evaluate continuous CDF probability P(Y <= y) at physical value(s) y.
+        """Evaluate the continuous CDF, P(Y <= y), at physical value(s) `y`.
 
         Parameters
         ----------
         y : float | ArrayLike
-            If a scalar float, evaluates P(Y <= y) at y for all samples.
-            If a 1D array of shape (n_samples,), evaluates P(Y_i <= y_i)
-            sample-wise for each corresponding sample i.
+            Physical target value(s) at which to evaluate the CDF. A
+            scalar is broadcast across all samples; a 1D array of length
+            `n_samples` evaluates each sample at its own `y` value.
 
         Returns
         -------
         np.ndarray
-            1D array of shape (n_samples,) containing evaluated probabilities.
+            1D array of shape (n_samples,) containing P(Y <= y) for each
+            sample, linearly interpolated (or exactly looked up) against
+            `grid_y`/`grid_cdf`, with flat extrapolation to 0.0 below
+            `grid_y[0]` and 1.0 above `grid_y[-1]`.
 
         Raises
         ------
         ValueError
-            If y is an array and not of shape (n_samples,).
-            If y is not a scalar or a 1D array.
+            If `y` is neither a scalar nor a 1D array of length
+            `n_samples`.
 
         """
         y_arr = np.asarray(y, dtype=float)
-        n_grid = len(self.grid_y)
-
-        # 1. Scalar query (same y for all samples)
         if y_arr.ndim == 0:
-            idx = int(
-                np.clip(
-                    np.searchsorted(self.grid_y, y_arr.item(), side="right") - 1,
-                    0,
-                    n_grid - 2,
-                )
+            return np.array(
+                [
+                    np.interp(float(y_arr), self.grid_y, self.grid_cdf[i])
+                    for i in range(self._n_samples)
+                ]
             )
-            t = np.clip(
-                (y_arr.item() - self.grid_y[idx])
-                / (self.grid_y[idx + 1] - self.grid_y[idx]),
-                0.0,
-                1.0,
+        if y_arr.ndim != 1 or y_arr.shape[0] != self._n_samples:
+            raise ValueError(
+                f"Expected 'y' to be a scalar or 1D array of length "
+                f"{self._n_samples}, got shape {y_arr.shape}."
             )
-            return (1.0 - t) * self.grid_cdf[:, idx] + t * self.grid_cdf[:, idx + 1]
-
-        # 2. Vectorized 1D query (sample-wise y_i)
-        if y_arr.ndim == 1:
-            if len(y_arr) != self._n_samples:
-                raise ValueError(
-                    f"Expected 1D 'y' array of length {self._n_samples}, "
-                    f"got {len(y_arr)}."
-                )
-            idx = np.clip(
-                np.searchsorted(self.grid_y, y_arr, side="right") - 1,
-                0,
-                n_grid - 2,
-            )
-            y0, y1 = self.grid_y[idx], self.grid_y[idx + 1]
-            t = np.clip((y_arr - y0) / (y1 - y0), 0.0, 1.0)
-            rows = np.arange(self._n_samples)
-            return (1.0 - t) * self.grid_cdf[rows, idx] + t * self.grid_cdf[
-                rows, idx + 1
+        return np.array(
+            [
+                np.interp(y_arr[i], self.grid_y, self.grid_cdf[i])
+                for i in range(self._n_samples)
             ]
-
-        raise ValueError("Parameter 'y' must be a scalar float or a 1D array.")
+        )

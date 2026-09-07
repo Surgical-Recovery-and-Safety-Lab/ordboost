@@ -3,12 +3,75 @@
 from typing import Union
 
 import numpy as np
+import xarray as xr
 from numpy.typing import ArrayLike
+from scipy.stats import kstest
+from scores.probability import Pit, PitFcstAtObs, crps_cdf
 
 from ordboost.distributions import (
     ContinuousPredictiveDistribution,
     DiscretePredictiveDistribution,
 )
+from ordboost.mappers import BaseBinMapper
+
+
+def baseline_distribution(
+    y_train: ArrayLike, n_samples: int, boundary_epsilon: float = 1e-4
+) -> ContinuousPredictiveDistribution:
+    """Construct a no-covariate baseline distribution.
+
+    Builds the unconditional empirical CDF of `y_train` and broadcasts it
+    identically across `n_samples` rows, representing the best achievable
+    forecast in the complete absence of covariate information -- the
+    standard reference forecast against which skill scores are computed.
+
+    Parameters
+    ----------
+    y_train : ArrayLike of shape (n_train_samples,)
+        Training targets defining the unconditional empirical distribution.
+        Should be the full, unfiltered training set, even when scoring a
+        filtered evaluation subset, so the baseline continues to represent
+        "no covariate information" rather than "no information restricted
+        to a subgroup" (see `crps_skill_score`).
+    n_samples : int
+        Number of rows to broadcast the baseline CDF across, e.g.
+        the number of samples in the evaluation set this baseline will be
+        scored against.
+    boundary_epsilon : float, default=1e-4
+        Offset used to place a grid point strictly below the observed
+        minimum of `y_train`, forced to CDF=0.0. Required because
+        `ContinuousPredictiveDistribution` validates that every row's
+        first value equals 0.0 within tolerance, and the empirical CDF at
+        the observed minimum itself is generally nonzero (typically
+        `1/n_train_samples`, not 0).
+
+    Returns
+    -------
+    ContinuousPredictiveDistribution
+        A distribution with `n_samples` identical rows, each equal to the
+        empirical CDF of `y_train`.
+
+    Raises
+    ------
+    ValueError
+        If `y_train` is empty, or `n_samples` is not a positive integer.
+
+    """
+    y_train_arr = np.asarray(y_train, dtype=float)
+    if y_train_arr.size == 0:
+        raise ValueError("'y_train' must not be empty.")
+    if not isinstance(n_samples, (int, np.integer)) or n_samples <= 0:
+        raise ValueError(f"'n_samples' must be a positive integer, got {n_samples}.")
+
+    unique_y = np.sort(np.unique(y_train_arr))
+    unique_cdf = np.array([np.mean(y_train_arr <= v) for v in unique_y])
+
+    grid_y = np.concatenate([[unique_y[0] - boundary_epsilon], unique_y])
+    grid_cdf_row = np.concatenate([[0.0], unique_cdf])
+
+    grid_cdf = np.tile(grid_cdf_row, (n_samples, 1))
+
+    return ContinuousPredictiveDistribution(grid_y=grid_y, grid_cdf=grid_cdf)
 
 
 def crps_score(
@@ -18,10 +81,17 @@ def crps_score(
 ) -> float:
     """Compute the Continuous Ranked Probability Score (CRPS).
 
-    For discrete distributions, evaluates squared cumulative probability error
-    across threshold classes. For continuous predictive distributions,
-    evaluates integrated squared distance between predicted CDF F(y) and
-    the empirical step function I(y_true <= y) via trapezoidal integration.
+    For discrete distributions, evaluates the exact squared cumulative
+    probability error across threshold classes (a finite sum, not an
+    approximation). For continuous predictive distributions, evaluates
+    the exact integrated squared distance between the predicted CDF
+    `F(y)` and the empirical step function `I(y_true <= y)`, via
+    `scores.probability.crps_cdf`. This computes the exact integral for
+    a piecewise-linear CDF -- including correctly splitting the grid
+    segment containing `y_true` -- rather than approximating it via
+    trapezoidal integration over grid points alone, which systematically
+    under- or over-estimates depending on where `y_true` falls within a
+    segment (worse for wider bins).
 
     Parameters
     ----------
@@ -40,7 +110,9 @@ def crps_score(
     Raises
     ------
     ValueError
-        If `y_true` shape or sample count mismatches `y_dist`.
+        If `y_true` shape or sample count mismatches `y_dist`, or (for
+        discrete distributions) `y_true` contains a value not present in
+        `y_dist.classes`.
 
     """
     y_true_arr = np.asarray(y_true, dtype=float)
@@ -51,7 +123,6 @@ def crps_score(
 
     n_samples = len(y_true_arr)
 
-    # Handle ContinuousPredictiveDistribution via trapezoidal integration
     if isinstance(y_dist, ContinuousPredictiveDistribution):
         if n_samples != y_dist.grid_cdf.shape[0]:
             raise ValueError(
@@ -59,19 +130,17 @@ def crps_score(
                 f"'y_dist' has {y_dist.grid_cdf.shape[0]} samples."
             )
 
-        grid_y = y_dist.grid_y
-        grid_cdf = y_dist.grid_cdf
-
-        # Empirical step function I(y_true <= grid_y)
-        true_indicator = (y_true_arr[:, np.newaxis] <= grid_y[np.newaxis, :]).astype(
-            float
+        fcst_da = xr.DataArray(
+            y_dist.grid_cdf,
+            dims=["sample", "threshold"],
+            coords={"threshold": y_dist.grid_y},
         )
+        obs_da = xr.DataArray(y_true_arr, dims=["sample"])
 
-        # Integrated squared distance along continuous physical grid dy
-        cdf_diff_sq = (grid_cdf - true_indicator) ** 2
-        dy = np.diff(grid_y)
-        avg_sq_diff = 0.5 * (cdf_diff_sq[:, :-1] + cdf_diff_sq[:, 1:])
-        sample_crps = np.sum(avg_sq_diff * dy, axis=1)
+        result = crps_cdf(
+            fcst_da, obs_da, threshold_dim="threshold", preserve_dims=["sample"]
+        )
+        sample_crps = result.total.values
 
     else:
         # Handle Discrete PredictiveDistribution
@@ -80,18 +149,15 @@ def crps_score(
                 f"Sample count mismatch: 'y_true' has {n_samples} samples, but "
                 f"'y_dist' has {y_dist.pmf.shape[0]} samples."
             )
-
         if not set(y_true_arr).issubset(set(y_dist.classes)):
             missing_classes = set(y_true_arr) - set(y_dist.classes)
             raise ValueError(
                 f"y_true contains target values not present in y_dist.classes: "
                 f"{missing_classes}"
             )
-
         true_indicator = (
             y_true_arr[:, np.newaxis] <= y_dist.classes[np.newaxis, :]
         ).astype(float)
-
         cdf_diff_sq = (y_dist.cdf - true_indicator) ** 2
         sample_crps = np.sum(cdf_diff_sq, axis=1)
 
@@ -104,6 +170,48 @@ def crps_score(
         return float(np.average(sample_crps, weights=weights))
 
     return float(np.mean(sample_crps))
+
+
+def crps_skill_score(
+    y_true: ArrayLike,
+    dist_model: ContinuousPredictiveDistribution,
+    dist_baseline: ContinuousPredictiveDistribution,
+    sample_weight: Union[ArrayLike, None] = None,
+) -> float:
+    """Compute the CRPS skill score relative to a reference forecast.
+
+    Defined as ``CRPSS = 1 - CRPS(model) / CRPS(baseline)``. A value of 0
+    indicates no improvement over the baseline, 1 indicates a perfect
+    forecast, and negative values indicate performance worse than the
+    baseline. `dist_baseline` is typically constructed via
+    `baseline_distribution`, but may be any reference forecast.
+
+    Parameters
+    ----------
+    y_true : ArrayLike of shape (n_samples,)
+        True physical target values.
+    dist_model : ContinuousPredictiveDistribution
+        The model's predicted distribution.
+    dist_baseline : ContinuousPredictiveDistribution
+        The reference forecast distribution to compare against.
+    sample_weight : ArrayLike of shape (n_samples,), optional
+        Sample weights, applied identically to both CRPS computations.
+
+    Returns
+    -------
+    float
+        The CRPS skill score.
+
+    Raises
+    ------
+    ValueError
+        If `y_true`'s sample count mismatches `dist_model` or
+        `dist_baseline` (raised by `crps_score`).
+
+    """
+    crps_model = crps_score(y_true, dist_model, sample_weight=sample_weight)
+    crps_baseline = crps_score(y_true, dist_baseline, sample_weight=sample_weight)
+    return 1.0 - (crps_model / crps_baseline)
 
 
 def pinball_loss(
@@ -164,6 +272,85 @@ def pinball_loss(
     return float(np.mean(loss))
 
 
+def pinball_loss_skill_score(
+    y_true: ArrayLike,
+    dist_model: ContinuousPredictiveDistribution,
+    dist_baseline: ContinuousPredictiveDistribution,
+    q: float,
+    sample_weight: Union[ArrayLike, None] = None,
+) -> float:
+    """Compute the pinball loss skill score at quantile level `q`.
+
+    Defined as ``PLSS = 1 - pinball_loss(model) / pinball_loss(baseline)``,
+    both evaluated at the same quantile level `q` and against the same
+    `y_true`. Interpretation mirrors `crps_skill_score`: 0 indicates no
+    improvement over the baseline, 1 indicates a perfect forecast at that
+    quantile, negative values indicate worse-than-baseline performance.
+
+    Parameters
+    ----------
+    y_true : ArrayLike of shape (n_samples,)
+        True physical target values.
+    dist_model : ContinuousPredictiveDistribution
+        The model's predicted distribution.
+    dist_baseline : ContinuousPredictiveDistribution
+        The reference forecast distribution to compare against.
+    q : float
+        Quantile level in (0.0, 1.0) at which to evaluate both forecasts.
+    sample_weight : ArrayLike of shape (n_samples,), optional
+        Sample weights, applied identically to both pinball loss
+        computations.
+
+    Returns
+    -------
+    float
+        The pinball loss skill score at quantile `q`.
+
+    Raises
+    ------
+    ValueError
+        If `q` lies outside (0.0, 1.0), or if shapes mismatch (raised by
+        `pinball_loss`).
+
+    """
+    y_pred_model = dist_model.ppf(q)
+    y_pred_baseline = dist_baseline.ppf(q)
+    loss_model = pinball_loss(y_true, y_pred_model, q=q, sample_weight=sample_weight)
+    loss_baseline = pinball_loss(
+        y_true, y_pred_baseline, q=q, sample_weight=sample_weight
+    )
+    return 1.0 - (loss_model / loss_baseline)
+
+
+def marginal_calibration_curve(
+    y_true: ArrayLike, dist: ContinuousPredictiveDistribution
+) -> tuple[np.ndarray, np.ndarray]:
+    """Computes the difference between the empirical CDF and the average CDF.
+
+    Parameters
+    ----------
+    y_true : ArrayLike of shape (n_samples,)
+        True continuous target values.
+    dist : ContinuousPredictiveDistribution
+        Predicted continuous distributions.
+
+    Returns
+    -------
+    grid_y : np.ndarray of shape (n_points,)
+        Grid points at which CDF were evaluated.
+    calibration : np.ndarray of shape (n_points,)
+        Marginal calibration.
+
+    """
+    y_true_arr = np.array(y_true, dtype=float)
+    grid_y = dist.grid_y
+
+    mean_cdf = dist.grid_cdf.mean(axis=0)
+    empirical_cdf = np.array([np.mean(y_true_arr <= x) for x in grid_y])
+
+    return grid_y, empirical_cdf - mean_cdf
+
+
 def interval_coverage_rate(
     y_true: ArrayLike,
     dist: ContinuousPredictiveDistribution,
@@ -188,7 +375,16 @@ def interval_coverage_rate(
     float
         Proportion of true observations lying within predicted interval bounds.
 
+    Raises
+    ------
+    ValueError
+        If alpha not within (0.0, 1.0); or sample_weights do not have
+        the same shape as y_arr.
+
     """
+    if not 0.0 < alpha < 1.0:
+        raise ValueError("Significance level 'alpha' must lie within (0.0, 1.0).")
+
     y_true_arr = np.asarray(y_true, dtype=float)
     lower, upper = dist.interval(alpha=alpha)
 
@@ -203,6 +399,35 @@ def interval_coverage_rate(
         return float(np.average(covered, weights=weights))
 
     return float(np.mean(covered))
+
+
+def sharpness(dist: ContinuousPredictiveDistribution, alpha: float = 0.10) -> float:
+    """Compute mean interval width at significance level alpha.
+
+
+    Parameters
+    ----------
+    dist : ContinuousPredictiveDistribution
+        Predicted continuous distributions.
+    alpha : float, default=0.10
+        Tail significance level in range (0.0, 1.0).
+
+    Returns
+    -------
+    float
+        Mean interval width.
+
+    Raises
+    ------
+    ValueError
+        If alpha not within (0.0, 1.0)
+
+    """
+    if not 0.0 < alpha < 1.0:
+        raise ValueError("Significance level 'alpha' must lie within (0.0, 1.0).")
+
+    lower, upper = dist.interval(alpha=alpha)
+    return float(np.mean(upper - lower))
 
 
 def winkler_score(
@@ -232,6 +457,11 @@ def winkler_score(
     float
         Mean Winkler score across samples (lower is better).
 
+    Raises
+    ------
+    ValueError
+        If alpha not within (0.0, 1.0)
+
     """
     if not 0.0 < alpha < 1.0:
         raise ValueError("Significance level 'alpha' must lie within (0.0, 1.0).")
@@ -254,3 +484,120 @@ def winkler_score(
         return float(np.average(sample_scores, weights=weights))
 
     return float(np.mean(sample_scores))
+
+
+def pit_diagnostics(
+    y_true: ArrayLike,
+    dist: ContinuousPredictiveDistribution,
+    mapper: BaseBinMapper,
+    precision: Union[int, None] = 2,
+) -> PitFcstAtObs:
+    """Construct exact PIT diagnostics using only per-sample scalars
+    (O(n_samples)), not the full CDF grid (O(n_samples * n_grid_points)).
+
+    Computes F(y_true) and its left-hand limit F(y_true-) directly via
+    dist.cdf(), rather than handing the entire grid_cdf array to `Pit`'s
+    threshold-dimension mode.
+    The data from the distribution is rounded to the given precision, to
+    avoid memory issues for large datasets, unless precision is `None`.
+
+    Parameters
+    ----------
+    y_true : ArrayLike of shape (n_samples,)
+        True continuous target values.
+    dist : ContinuousPredictiveDistribution
+        Predicted continuous distributions, with `grid_y`/`grid_cdf`
+        constructed by `mapper`.
+    mapper : BaseBinMapper
+        The (fitted or unfitted) mapper instance whose `floor_atom` and
+        `ceiling_atom` flags determine which grid points are treated as
+        atoms. Only these two boolean attributes are read; the mapper
+        does not need to be fitted.
+    precision : int or None, default=2
+        Number of decimal places to round `fcst_at_obs`/`fcst_at_obs_left`
+        to before constructing `PitFcstAtObs`.
+        Pass `None` to disable rounding entirely.
+
+    Returns
+    -------
+    scores.probability.PitFcstAtObs
+        A fitted `PitFcstAtObs` object exposing `.hist_values(n_bins)`,
+        `.plotting_points()`, `.plotting_points_parametric()`,
+        `.expected_value()`, `.variance()`, and `.alpha_score()` for
+        calibration diagnostics and summary statistics.
+
+    Raises
+    ------
+    ValueError
+        If `y_true`'s length does not match `dist.grid_cdf`'s sample
+        count, or if `precision` is not None and is not strictly
+        positive.
+    TypeError
+        If `precision` is not None and is not an integer.
+
+    """
+    if precision is not None:
+        if isinstance(precision, bool) or not isinstance(precision, (int, np.integer)):
+            raise TypeError(
+                f"Expected 'precision' to be an int or None, got "
+                f"{type(precision).__name__}."
+            )
+        if precision <= 0:
+            raise ValueError(f"'precision' must be greater than 0, got {precision}.")
+
+    y_true_arr = np.asarray(y_true, dtype=float)
+    n_samples = dist.grid_cdf.shape[0]
+    if y_true_arr.shape != (n_samples,):
+        raise ValueError(
+            f"Expected 'y_true' of shape ({n_samples},) to match 'dist', "
+            f"got shape {y_true_arr.shape}."
+        )
+
+    fcst_at_obs = dist.cdf(y_true_arr)
+    fcst_at_obs_left = fcst_at_obs.copy()
+
+    if getattr(mapper, "floor_atom", False):
+        floor_value = dist.grid_y[1]
+        at_floor = np.isclose(y_true_arr, floor_value)
+        fcst_at_obs_left[at_floor] = 0.0  # nothing lies below the true floor
+
+    if getattr(mapper, "ceiling_atom", False):
+        ceiling_value = dist.grid_y[-1]
+        at_ceiling = np.isclose(y_true_arr, ceiling_value)
+        # per-sample value just before the ceiling, for atom samples only
+        fcst_at_obs_left[at_ceiling] = dist.grid_cdf[at_ceiling, -2]
+
+    if precision is not None:
+        fcst_at_obs = np.round(fcst_at_obs, precision)
+        fcst_at_obs_left = np.round(fcst_at_obs_left, precision)
+
+    fcst_da = xr.DataArray(fcst_at_obs, dims=["sample"])
+    fcst_left_da = xr.DataArray(fcst_at_obs_left, dims=["sample"])
+
+    return PitFcstAtObs(fcst_da, fcst_at_obs_left=fcst_left_da)
+
+
+def pit_ks_test(pit: Pit) -> tuple[float, float]:
+    """Compute a Kolmogorov-Smirnov test of PIT uniformity.
+
+    Convenience wrapper around `scipy.stats.kstest`, using `pit`'s
+    duplicate-free plotting points. For discontinuous-CDF calibration
+    assessment the alpha score is prefered and computed directly
+    from the Pit object.
+
+    Parameters
+    ----------
+    pit : scores.probability.Pit
+        A fitted `Pit` object, e.g. from `pit_diagnostics`.
+
+    Returns
+    -------
+    statistic : float
+        The KS test statistic.
+    p_value : float
+        The associated p-value.
+
+    """
+    points = pit.plotting_points_parametric()
+    result = kstest(points.values, "uniform")
+    return float(result.statistic), float(result.pvalue)

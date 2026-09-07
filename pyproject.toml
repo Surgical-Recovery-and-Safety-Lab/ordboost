@@ -18,9 +18,11 @@ classifiers = [
 ]
 
 dependencies = [
+  "numba>=0.67.0",
   "numpy>=1.22.0",
   "scikit-learn>=1.1.0",
   "scipy>=1.8.0",
+  "scores>=2.6.0",
 ]
 
 [project.optional-dependencies]
