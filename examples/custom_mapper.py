@@ -1,203 +1,87 @@
-from typing import Union
-
 import numpy as np
-from numpy.typing import ArrayLike
-from sklearn.base import check_is_fitted
 
-from ordboost import BaseBinMapper, ContinuousPredictiveDistribution, OrdBoostRegressor
+from ordboost.mappers import BaseBinMapper
+from ordboost.models import OrdBoostRegressor
 
 
-class MeanBinMapper(BaseBinMapper):
-    """Maps discrete bin probabilities using empirical intra-bin means.
+class GeometricMeanBinMapper(BaseBinMapper):
+    """Maps discrete bin probabilities using one geometric-mean point per bin.
 
-    Computes the empirical mean of continuous targets within each bin during
-    fitting. Maps discrete probability mass functions (PMF) to continuous
-    expected target values using these fitted means. Empty bins are filled by
-    interpolating between adjacent non-empty bin means.
+    A custom mapper needs only to implement `_intra_bin_points`, which
+    defines the interior grid point(s) added within each bin and the
+    cumulative weight (in bin-index units) assigned to each. Everything
+    else is inherited from `BaseBinMapper`.
 
-    Parameters
-    ----------
-    bin_edges : array-like of shape (n_bins + 1,) or None, default=None
-        Monotonically increasing boundaries defining continuous bin intervals.
-
-    Attributes
-    ----------
-    bin_edges_ : np.ndarray
-        1D float array of shape (n_bins + 1,) containing validated bin edges.
-    bin_means_ : np.ndarray
-        1D float array of shape (n_bins,) containing empirical means of
-        continuous targets within each bin.
-    n_bins_ : int
-        Number of discrete bins defined by `bin_edges_`.
-
-    Methods
-    -------
-    fit(y_continuous, y_binned=None)
-        Compute empirical bin means from continuous training targets.
-    transform(pmf)
-        Map discrete PMF probability matrix to continuous expected values.
-    to_continuous_dist(pmf)
-        Construct a ContinuousPredictiveDistribution from a discrete PMF matrix.
-
+    The geometric mean is only meaningful for strictly positive data;
+    this mapper is a reasonable choice for a right-skewed, positive-
+    valued outcome where the arithmetic mean would be pulled too far
+    toward the tail (e.g. cost or duration data).
     """
 
-    def __init__(self, bin_edges: Union[ArrayLike, None] = None) -> None:
-        super().__init__(bin_edges=bin_edges)
-
-    def fit(
-        self, y_continuous: ArrayLike, y_binned: Union[ArrayLike, None] = None
-    ) -> "EmpiricalMeanBinMapper":
-        """Compute empirical bin means from continuous training targets.
+    def _intra_bin_points(self, bin_data, low, high, k):
+        """Return one interior point at the bin's empirical geometric mean.
 
         Parameters
         ----------
-        y_continuous : array-like of shape (n_samples,)
-            Unbinned continuous target values (e.g., exact physical units).
-        y_binned : array-like of shape (n_samples,), optional
-            Corresponding 0-indexed discrete bin labels. If None, labels are
-            computed automatically from `bin_edges`.
+        bin_data : ndarray of shape (n_bin_samples,)
+            Continuous training targets belonging to bin `k`.
+        low : float
+            The effective lower boundary of bin `k`.
+        high : float
+            The effective upper boundary of bin `k`.
+        k : int
+            The 0-indexed bin number.
 
         Returns
         -------
-        EmpiricalMeanBinMapper
-            Fitted mapper instance.
-
-        Raises
-        ------
-        ValueError
-            If `bin_edges` is invalid, `y_continuous` is not 1D, or
-            `y_binned` shape mismatches `y_continuous`.
+        points : ndarray of shape (1,)
+            The bin's empirical geometric mean, clipped to [low, high].
+            Falls back to the geometric midpoint if `bin_data` is empty
+            or contains non-positive values (geometric mean undefined).
+        weights : ndarray of shape (1,)
+            The empirical fraction of `bin_data` at or below the
+            geometric mean, offset into bin-index units (k + fraction).
 
         """
-        edges = self._validate_edges()
-        y_cont = np.asarray(y_continuous, dtype=float)
+        positive_data = bin_data[bin_data > 0] if len(bin_data) > 0 else bin_data
 
-        if y_cont.ndim != 1:
-            raise ValueError("Expected 'y_continuous' to be a 1D array.")
-
-        self.bin_edges_ = edges
-        self.n_bins_ = len(edges) - 1
-
-        if y_binned is None:
-            # Digitize continuous targets into 0-indexed bins [0, n_bins - 1]
-            binned = np.digitize(y_cont, edges[1:-1])
+        if len(positive_data) == 0:
+            geo_mean = (low + high) / 2.0
+            frac_below = 0.5
         else:
-            binned = np.asarray(y_binned, dtype=int)
-            if binned.shape != y_cont.shape:
-                raise ValueError(
-                    f"Shape mismatch: 'y_binned' shape {binned.shape} "
-                    f"does not match 'y_continuous' shape {y_cont.shape}."
+            geo_mean = float(
+                np.clip(
+                    np.exp(np.mean(np.log(positive_data))),
+                    low,
+                    high,
                 )
-
-        self.bin_means_ = np.empty(self.n_bins_, dtype=float)
-        empty_bins = []
-
-        for k in range(self.n_bins_):
-            mask = binned == k
-            if np.any(mask):
-                self.bin_means_[k] = np.mean(y_cont[mask])
-            else:
-                empty_bins.append(k)
-
-        if empty_bins:
-            valid_bins = np.setdiff1d(np.arange(self.n_bins_), empty_bins)
-            if len(valid_bins) > 0:
-                self.bin_means_[empty_bins] = np.interp(
-                    empty_bins, valid_bins, self.bin_means_[valid_bins]
-                )
-            else:
-                # Fallback to geometric midpoints if all bins are empty
-                self.bin_means_ = (edges[:-1] + edges[1:]) / 2.0
-
-        return self
-
-    def transform(self, pmf: ArrayLike) -> np.ndarray:
-        """Map discrete PMF probability matrix to continuous expected values.
-
-        Parameters
-        ----------
-        pmf : array-like of shape (n_samples, n_bins)
-            Probability mass function matrix where rows sum to 1.0.
-
-        Returns
-        -------
-        np.ndarray
-            1D float array of shape (n_samples,) containing continuous
-            expected target values.
-
-        Raises
-        ------
-        NotFittedError
-            If the mapper instance has not been fitted prior to calling transform.
-        ValueError
-            If `pmf` is not a 2D array or column count does not match `n_bins_`.
-
-        """
-        check_is_fitted(self, attributes=["bin_edges_", "bin_means_", "n_bins_"])
-        pmf_arr = np.asarray(pmf, dtype=float)
-
-        if pmf_arr.ndim != 2:
-            raise ValueError("Expected 'pmf' to be a 2D array.")
-        if pmf_arr.shape[1] != self.n_bins_:
-            raise ValueError(
-                f"PMF column dimension ({pmf_arr.shape[1]}) does not match "
-                f"fitted bin count ({self.n_bins_})."
             )
+            frac_below = float(np.mean(bin_data <= geo_mean))
 
-        return np.dot(pmf_arr, self.bin_means_)
-
-    def to_continuous_dist(self, pmf: ArrayLike) -> ContinuousPredictiveDistribution:
-        """Construct a ContinuousPredictiveDistribution from a discrete PMF matrix.
-
-        Parameters
-        ----------
-        pmf : array-like of shape (n_samples, n_bins)
-            Discrete probability mass function matrix where rows sum to 1.0.
-
-        Returns
-        -------
-        ContinuousPredictiveDistribution
-            Continuous distribution evaluated over physical target grid.
-
-        Raises
-        ------
-        NotFittedError
-            If the mapper instance has not been fitted prior to calling.
-        ValueError
-            If `pmf` is not a 2D array or column count does not match `n_bins_`.
-
-        """
-        check_is_fitted(self, attributes=["bin_edges_", "bin_means_", "n_bins_"])
-        pmf_arr = np.asarray(pmf, dtype=float)
-
-        if pmf_arr.ndim != 2:
-            raise ValueError("Expected 'pmf' to be a 2D array.")
-        if pmf_arr.shape[1] != self.n_bins_:
-            raise ValueError(
-                f"PMF column dimension ({pmf_arr.shape[1]}) does not match "
-                f"fitted bin count ({self.n_bins_})."
-            )
-
-        cum_pmf = np.cumsum(pmf_arr, axis=1)
-        grid_cdf = np.hstack(
-            [
-                np.zeros((pmf_arr.shape[0], 1), dtype=float),
-                cum_pmf,
-            ]
-        )
-
-        return ContinuousPredictiveDistribution(
-            grid_y=self.bin_edges_, grid_cdf=grid_cdf
-        )
+        return np.array([geo_mean]), np.array([k + frac_below])
 
 
-# Usage with OrdBoostRegressor
-X_train = np.random.randn(200, 3)
-y_train = np.exp(X_train[:, 0]) + np.random.normal(0, 0.2, 200)
+# --- Usage: plug the custom mapper into OrdBoostRegressor ---
 
-custom_mapper = MeanBinMapper()
-model = OrdBoostRegressor(mapper=custom_mapper)
-model.fit(X_train, y_train)
+# Generate some synthetic data
+rng = np.random.default_rng(42)
+n_samples = 500
+X = rng.standard_normal((n_samples, 3))
+# Positive, right-skewed target (e.g. a duration or cost outcome)
+y = np.exp(1.0 + 0.5 * X[:, 0] + rng.standard_normal(n_samples) * 0.3)
 
-# Print mapper to make sure it is the custom one
-print(f"Mapper being used {model.mapper}")
+# Pass an *unconfigured* mapper instance (no bin_edges set)
+# OrdBoostRegressor is the single source of truth for bin_edges
+# and assigns them automatically.
+custom_mapper = GeometricMeanBinMapper()
+
+model = OrdBoostRegressor(n_bins=8, mapper=custom_mapper, random_state=42)
+model.fit(X, y)
+
+n = 5  # Get the n first CDFs
+dist = model.predict_dist(X[:n])
+medians = dist.median()
+pis = dist.interval(alpha=0.05)  # 95% prediction interval
+for i in range(n):
+    print(f"Sample {i} median [95% PI]")
+    print(f"  {medians[i]:.2f} [{pis[0][i]:.2f} -- {pis[1][i]:.2f}]")
