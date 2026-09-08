@@ -99,6 +99,6 @@ Full example:
 %}
 ```
 
-Now that the basics have been covered, look at the [evaluation examples](evaluation.md#model-evaluation) to see how the models can be evaluated.
+Now that the basics have been covered, look at the [evaluation examples](evaluation.md#) to see how the models can be evaluated.
 
 ---
