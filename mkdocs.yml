@@ -54,7 +54,10 @@ extra_javascript:
 
 nav:
   - Home: index.md
-  - Examples: examples.md
+  - Examples:
+      - Quickstart: examples/quickstart.md
+      - Model evaluation: examples/evaluation.md
+      - Advanced: examples/advanced.md
   - API Reference:
       - Models: api/models.md
       - Mappers: api/mappers.md
