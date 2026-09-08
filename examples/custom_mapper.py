@@ -4,6 +4,7 @@ from ordboost.mappers import BaseBinMapper
 from ordboost.models import OrdBoostRegressor
 
 
+# --- Mapper definition
 class NullBinMapper(BaseBinMapper):
     """Maps discrete bin probabilities using raw bin edges only, with no
     intra-bin refinement.
@@ -46,7 +47,8 @@ class NullBinMapper(BaseBinMapper):
         return np.array([]), np.array([])
 
 
-# --- Usage: plug the custom mapper into OrdBoostRegressor ---
+# --- Usage
+# Plug the custom mapper into OrdBoostRegressor
 
 # Generate some synthetic data
 rng = np.random.default_rng(42)
