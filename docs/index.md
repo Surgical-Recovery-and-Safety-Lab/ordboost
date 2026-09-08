@@ -61,11 +61,11 @@ pip install -e ".[dev]"
 
 ## Explore examples
 
-For step-by-step code walkthroughs and diagnostic workflows, visit the **[Examples Page](examples.md)**:
+For step-by-step code walkthroughs and diagnostic workflows, visit the **Example pages**:
 
-* [Quickstart examples](examples.md#quickstart-examples): Basic discrete ordinal ranking and continuous prediction interval workflows.
-* [Evaluating model quality](examples.md#evaluating-model-quality): Model calibration diagnostics using PIT histograms, interval coverage, and Winkler scores.
-* [Customising Modelling Strategies](examples.md#customising-modelling-strategies): Creating custom target mappers by extending `BaseBinMapper`.
+* [Quickstart examples](examples/quickstart.md): Basic discrete ordinal ranking and continuous prediction interval workflows.
+* [Evaluating model quality](examples/evaluation.md): Model calibration diagnostics using PIT histograms, interval coverage, and Winkler scores.
+* [Customising Modelling Strategies](examples/advanced.md): Creating custom target mappers by extending `BaseBinMapper`.
 
 ---
 
