@@ -1,7 +1,6 @@
-### Quickstart examples
 These examples are minimal examples for the OrdBoostClassifier and the OrdBoostRegressor models.
 
-#### 1. OrdBoostClassifier simple example
+#### OrdBoostClassifier simple example
 Use `OrdBoostClassifier` for discrete ordinal problems (like Likert survey responses or stage rankings) and score probabilistic performance via discrete CRPS.
 
 First let us generate some synthetic ordinal data to train and test the model.
@@ -47,7 +46,7 @@ Full example:
 %}
 ```
 
-#### 2. OrdBoostRegressor simple example
+#### OrdBoostRegressor simple example
 
 Use `OrdBoostRegressor` for continuous problems and estimate prediction intervals for the outcome. Let's start by generating some synthetic data to fit and test the model.
 
