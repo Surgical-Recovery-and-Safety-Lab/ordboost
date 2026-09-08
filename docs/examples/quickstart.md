@@ -73,6 +73,10 @@ the same functions as the `OrdBoostClassifier` to make predictions and
 estimate prediction intervals. However, the cumulative distribution function (CDF)
 can be used to estimate probabilities, such as P(Y <= 3).
 
+We used the default method for the `predict` function which computes the
+prediction using the `mean`, and then specify the `median` method to get the median
+prediction. These produce different results.
+
 ``` python linenums="1"
 {%
     include-markdown "../../examples/quickstart_regression.py"
@@ -82,7 +86,8 @@ can be used to estimate probabilities, such as P(Y <= 3).
 
 The results should be:
 ```
-Predicted median: 0.78 [80% PI: -0.24, 1.40]
+Predicted mean: 0.68 [80% PI: -0.24, 1.40]
+Predicted median: 0.72 [80% PI: -0.24, 1.40]
 P(Y <= 3.0): 99.59%
 ```
 
