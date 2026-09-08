@@ -1,6 +1,6 @@
 import numpy as np
 
-from ordboost import OrdBoostClassifier, crps_score, pinball_loss
+from ordboost import OrdBoostClassifier
 
 # --- Generate data
 # Ordinal targets (e.g., pain scale 0-4)
