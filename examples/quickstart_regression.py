@@ -23,6 +23,7 @@ reg.fit(X_train, y_train)
 
 # --- Predict
 # 3. Generate continuous point predictions
+y_pred_mean = reg.predict(X_test)
 y_pred_median = reg.predict(X_test, method="median")
 
 # 80% prediction intervals
@@ -31,6 +32,10 @@ lower_80, upper_80 = dist.interval(alpha=0.20)
 prob_under_3 = dist.cdf(3.0)
 
 # Display predictions for test sample
+print(
+    f"Predicted mean: {y_pred_mean[0]:.2f} "
+    f"[80% PI: {lower_80[0]:.2f}, {upper_80[0]:.2f}]"
+)
 print(
     f"Predicted median: {y_pred_median[0]:.2f} "
     f"[80% PI: {lower_80[0]:.2f}, {upper_80[0]:.2f}]"
