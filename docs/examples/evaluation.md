@@ -1,4 +1,5 @@
-#### Performance evaluation
+### Performance evaluation
+
 This example demonstrates how to assess a fitted model's predictive accuracy using
 `ordboost.metrics`. Three metrics are used: 
 a plain point-prediction error (MAE), a proper scoring
@@ -86,8 +87,7 @@ Full example:
 %}
 ```
 
-#### Model calibration diagnostics
-
+### Model calibration diagnostics
 Evaluating the calibration of a model is crucial to know if the predictions can be
 trusted. The `OrdBoostRegressor` generates CDFs for each patient, so we use two 
 different methods to evaluate the calibration in this example: the Probability
@@ -160,7 +160,7 @@ Full example:
 %}
 ```
 
-#### Evaluating prediction intervals
+### Evaluating prediction intervals
 
 This example demonstrates how the prediction intervals can be evaluated.
 Three metrics are computed to evaluate the model's prediction intervals:
