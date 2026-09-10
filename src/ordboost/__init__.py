@@ -14,9 +14,16 @@ from ordboost.mappers import (
     UniformBinMapper,
 )
 from ordboost.metrics import (
+    baseline_distribution,
     crps_score,
+    crps_skill_score,
     interval_coverage_rate,
+    marginal_calibration_curve,
     pinball_loss,
+    pinball_loss_skill_score,
+    pit_diagnostics,
+    pit_ks_test,
+    sharpness,
     winkler_score,
 )
 from ordboost.models import OrdBoostClassifier, OrdBoostRegressor
@@ -39,8 +46,15 @@ __all__ = [
     "DiscretePredictiveDistribution",
     "ContinuousPredictiveDistribution",
     # Metrics
+    "baseline_distribution",
     "crps_score",
+    "crps_skill_score",
     "interval_coverage_rate",
+    "marginal_calibration_curve",
+    "sharpness",
     "pinball_loss",
+    "pinball_loss_skill_score",
+    "pit_diagnostics",
+    "pit_ks_test",
     "winkler_score",
 ]
