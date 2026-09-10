@@ -24,6 +24,7 @@ contains the code for interval evaluation example.
 * Updated the navigation menu in `mkdocs.yml`.
 * Update the `quickstart_classification.py` example.
 * Update the `quickstart_regression.py` example.
+* Development status in the `pyproject.toml`.
 
 
 ### Fixed
