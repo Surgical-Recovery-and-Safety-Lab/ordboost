@@ -12,7 +12,9 @@ By reframing continuous targets as discrete ordinal binning problems, **ordboost
 * **Non-Parametric Probabilistic Output**: Obtains complete predictive distribution objects capable of extracting probability mass functions (PMF), cumulative distribution functions (CDF), percentiles (`ppf`), and dynamic prediction intervals.
 * **Flexible Continuous Target Mapping**: Maps continuous values to discrete target spaces using configurable binning strategies (`QuantileBinMapper`, `UniformBinMapper`, `EmpiricalMeanBinMapper`, `EmpiricalMedianBinMapper`, `ContinuousBinMapper`).
 * **Monotonic Ordinal Constraints**: Supports constrained ordinal boosting (e.g., isotonic constraints) across sequential boundaries.
-* **Built-in Probabilistic Evaluation**: Evaluates probabilistic predictions directly using CRPS (`crps_score`), quantile loss (`pinball_loss`), prediction interval coverage (`interval_coverage_rate`), and Winkler scores (`winkler_score`).
+* **Probabilistic Evaluation**: Evaluates probabilistic predictions directly using CRPS (`crps_score`), quantile loss (`pinball_loss`), and their skill scores.
+* **Prediction Intervals Measures**: Measures the prediction interval coverage (`interval_coverage_rate`), sharpness (`sharpness`), and Winkler score (`winkler_score`).
+* **Calibration Diagnostics**: Computes marginal calibration (`marginal_calibration_curve`) and probabilistic calibration (`pit_diagnostics`).
 
 ---
 
@@ -59,11 +61,11 @@ pip install -e ".[dev]"
 
 ## Explore examples
 
-For step-by-step code walkthroughs and diagnostic workflows, visit the **[Examples Page](examples.md)**:
+For step-by-step code walkthroughs and diagnostic workflows, visit the **Example pages**:
 
-* [Quickstart examples](examples.md#quickstart-examples): Basic discrete ordinal ranking and continuous prediction interval workflows.
-* [Evaluating model quality](examples.md#evaluating-model-quality): Model calibration diagnostics using PIT histograms, interval coverage, and Winkler scores.
-* [Customising Modelling Strategies](examples.md#customising-modelling-strategies): Creating custom target mappers by extending `BaseBinMapper`.
+* [Quickstart examples](examples/quickstart.md): Basic discrete ordinal ranking and continuous prediction interval workflows.
+* [Evaluating model quality](examples/evaluation.md): Model calibration diagnostics using PIT histograms, interval coverage, and Winkler scores.
+* [Advanced examples](examples/advanced.md): Creating custom target mappers by extending `BaseBinMapper` and learning how to use `floor_atom` and `lower_bound`.
 
 ---
 

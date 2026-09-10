@@ -454,7 +454,7 @@ class OrdBoostRegressor(BaseEstimator, RegressorMixin):
     bin_strategy : {"quantile", "uniform"}, default="quantile"
         Strategy used to define automatic bin boundaries when `bin_edges`
         is None.
-    mapper : {"median", "mean", "quantile", "uniform", "continuous"}, BaseBinMapper, or None, default="median"
+    mapper : BaseBinMapper, {"median", "mean", "quantile", "uniform", "continuous"} or None, default="median"
         Bin mapping strategy used to convert predicted PMFs back to
         continuous predictions. A string selects the corresponding
         `BaseBinMapper` subclass, constructed automatically with
