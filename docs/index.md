@@ -65,7 +65,7 @@ For step-by-step code walkthroughs and diagnostic workflows, visit the **Example
 
 * [Quickstart examples](examples/quickstart.md): Basic discrete ordinal ranking and continuous prediction interval workflows.
 * [Evaluating model quality](examples/evaluation.md): Model calibration diagnostics using PIT histograms, interval coverage, and Winkler scores.
-* [Customising Modelling Strategies](examples/advanced.md): Creating custom target mappers by extending `BaseBinMapper`.
+* [Advanced examples](examples/advanced.md): Creating custom target mappers by extending `BaseBinMapper` and learning how to use `floor_atom` and `lower_bound`.
 
 ---
 
