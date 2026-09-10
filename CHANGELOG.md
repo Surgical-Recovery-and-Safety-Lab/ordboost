@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to Semantic Versioning ([SemVer](https://semver.org/spec/v2.0.0.html)).
 
+## [Unreleased]
+
+### Added
+* Split the examples into sections to make it more readable.
+* Added new metrics from 0.3.0.dev0 to the `__init__.py` imports.
+* An `assets/` folder in the `docs/` folder to store plots.
+* Renamed the `pit_histogram.py` script to `calibration_evaluation.py` which
+contains the code for the calibration example.
+* Renamed the `model_evaluation.py` script to `interval_evaluation.py` which
+contains the code for interval evaluation example.
+* An example demonstrating the use of atoms and bounds.
+* A concepts page to explain how `OrdBoost` works.
+
+### Changed
+* Changed the `custom_mapper.py` example to use the new base architecture.
+* Updated key features in the `README.md` and `index.md`.
+* Updated the navigation menu in `mkdocs.yml`.
+* Update the `quickstart_classification.py` example.
+* Update the `quickstart_regression.py` example.
+
+
+### Fixed
+* Removed `\n` from final print in quickstart_regression example.
+* Correct version number `v0.2.1` to `v.0.2.1` in `CHANGELOG.md`.
+* Added Claude Sonnet 5 in `README.md` acknowledgements.
+* Fixed docstring of `OrdBoostRegressor` to get correct mapper API reference.
+
+### Removed
+* Removed `examples.md`.
+
 ## [0.3.0.dev0] 2026-09-19
 
 ### Added
@@ -101,8 +131,8 @@ and this project adheres to Semantic Versioning ([SemVer](https://semver.org/spe
 * Github workflow to run tests on push and pull request
 
 [Unreleased]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.3.0.dev0...HEAD
-[0.3.0.dev0]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.2.1...v0.3.0.dev0
-[0.2.1]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.2.0...v0.2.1
+[0.3.0.dev0]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v.0.2.1...v0.3.0.dev0
+[0.2.1]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.2.0...v.0.2.1
 [0.2.0]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/releases/tag/v0.1.0
