@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to Semantic Versioning ([SemVer](https://semver.org/spec/v2.0.0.html)).
 
-## [Unreleased]
+## [0.3.0] 2026-09-10
 
 ### Added
 * Split the examples into sections to make it more readable.
@@ -131,7 +131,8 @@ contains the code for interval evaluation example.
 * Unit tests
 * Github workflow to run tests on push and pull request
 
-[Unreleased]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.3.0.dev0...HEAD
+[Unreleased]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.3.0.dev0...v0.3.0
 [0.3.0.dev0]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v.0.2.1...v0.3.0.dev0
 [0.2.1]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.2.0...v.0.2.1
 [0.2.0]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.1.1...v0.2.0
