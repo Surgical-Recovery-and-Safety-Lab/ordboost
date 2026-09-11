@@ -168,6 +168,64 @@ class TestFit:
         model.fit(X, y)
         assert len(model.estimators_) == len(model.classes_) - 1
 
+    def test_fit_two_classes_produces_single_edge_estimator(self) -> None:
+        """Test the minimum supported case (2 classes), which collapses
+        to a single cumulative edge model (n_classes - 1 == 1)."""
+        X = np.random.randn(40, 2)
+        y = np.tile([0, 1], 20)
+        model = OrdBoostClassifier(max_iter=5)
+        model.fit(X, y)
+        assert len(model.classes_) == 2
+        assert len(model.estimators_) == 1
+
+    def test_fit_with_explicit_classes_matching_observed_y(self) -> None:
+        """Test that passing 'classes' equal to the observed unique
+        labels behaves identically to leaving it unset."""
+        X = np.random.randn(60, 2)
+        y = np.tile([0, 5, 10], 20)
+        model = OrdBoostClassifier(max_iter=5)
+        model.fit(X, y, classes=[0, 5, 10])
+        np.testing.assert_array_equal(model.classes_, np.array([0, 5, 10]))
+        assert len(model.estimators_) == 2
+
+    def test_fit_with_explicit_classes_sorts_unsorted_input(self) -> None:
+        """Test that an out-of-order 'classes' array is sorted before
+        being stored as classes_."""
+        X = np.random.randn(40, 2)
+        y = np.tile([0, 1], 20)
+        model = OrdBoostClassifier(max_iter=5)
+        model.fit(X, y, classes=[10, 0, 1])
+        np.testing.assert_array_equal(model.classes_, np.array([0, 1, 10]))
+
+    def test_fit_with_explicit_classes_including_unobserved_class(self) -> None:
+        """Test that 'classes' may include a label never observed in y
+        (e.g. an empty bin), and that classes_ retains it -- the
+        documented use case that OrdBoostRegressor relies on to keep an
+        empty bin present via classes=np.arange(n_bins)."""
+        X = np.random.randn(40, 2)
+        y = np.tile([0, 1], 20)  # class '5' never appears
+        model = OrdBoostClassifier(max_iter=5)
+        model.fit(X, y, classes=[0, 1, 5])
+        np.testing.assert_array_equal(model.classes_, np.array([0, 1, 5]))
+        assert len(model.estimators_) == 2
+
+    def test_fit_explicit_classes_too_few_raises(self) -> None:
+        """Test that 'classes' with fewer than 2 elements raises ValueError."""
+        X = np.random.randn(20, 2)
+        y = np.tile([0, 1], 10)
+        model = OrdBoostClassifier()
+        with pytest.raises(ValueError, match="at least 2 unique values"):
+            model.fit(X, y, classes=[5])
+
+    def test_fit_y_label_missing_from_explicit_classes_raises(self) -> None:
+        """Test that a y label absent from an explicitly supplied
+        'classes' array raises ValueError naming the missing label."""
+        X = np.random.randn(20, 2)
+        y = np.tile([0, 1], 10)
+        model = OrdBoostClassifier()
+        with pytest.raises(ValueError, match=r"not present in 'classes'.*\[1\]"):
+            model.fit(X, y, classes=[0, 2])
+
 
 class TestEnforceMonotonicity:
     """Tests for OrdBoostClassifier._enforce_monotonicity."""
@@ -274,6 +332,21 @@ class TestPredictProba:
         model, X_test = fitted_model
         pmf = model.predict_proba(X_test)
         assert np.all(pmf >= 0.0)
+
+    def test_output_width_includes_unobserved_explicit_class(self) -> None:
+        """Test that predict_proba's output width matches the full
+        explicit 'classes' count, including a class never observed
+        during fit, and that rows still sum to 1.0 -- the guaranteed-
+        width contract documented on fit()'s 'classes' parameter."""
+        rng = np.random.default_rng(0)
+        X = rng.standard_normal((40, 2))
+        y = np.tile([0, 1], 20)  # class '5' never appears in training
+        model = OrdBoostClassifier(max_iter=10, random_state=0)
+        model.fit(X, y, classes=[0, 1, 5])
+
+        pmf = model.predict_proba(X)
+        assert pmf.shape == (40, 3)
+        np.testing.assert_allclose(pmf.sum(axis=1), 1.0, atol=1e-6)
 
     @pytest.mark.parametrize("mono_method", ["running_max", "isotonic"])
     def test_valid_pmf_for_both_monotonicity_methods(

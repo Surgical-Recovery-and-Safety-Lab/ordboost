@@ -242,7 +242,12 @@ class TestFit:
 
     @pytest.mark.parametrize(
         "custom_mapper",
-        [EmpiricalMeanBinMapper(), QuantileBinMapper(), UniformBinMapper()],
+        [
+            EmpiricalMeanBinMapper(),
+            QuantileBinMapper(),
+            UniformBinMapper(),
+            ContinuousBinMapper(),
+        ],
     )
     def test_fit_with_unconfigured_custom_mapper_instances(
         self, synthetic_data, custom_mapper
@@ -312,6 +317,37 @@ class TestFit:
         reg = OrdBoostRegressor(n_bins=5, max_iter=5, random_state=42)
         reg.fit(X, y)
         assert reg.classifier_.classes_.max() <= len(reg.bin_edges_)  # n_bins - 1
+
+    def test_fit_handles_empty_intermediate_bin_via_explicit_bin_edges(self) -> None:
+        """Test that fit succeeds, and produces the full expected bin
+        count, even when explicit bin_edges create empty intermediate
+        bins (no y values fall inside them). This is the scenario that
+        makes OrdBoostRegressor.fit's classes=np.arange(n_bins) call to
+        the underlying OrdBoostClassifier.fit necessary: without it,
+        np.unique(y_binned) alone would silently drop the empty bins
+        from classes_, leaving classifier_ and mapper_ disagreeing on
+        n_bins."""
+        rng = np.random.default_rng(0)
+        X = rng.standard_normal((60, 2))
+        # Two well-separated clusters; nothing falls in the [25, 75) span,
+        # so bins 1 and 2 of bin_edges=[25, 50, 75] receive zero samples.
+        y = np.where(
+            np.arange(60) < 30, rng.uniform(0, 10, 60), rng.uniform(90, 100, 60)
+        )
+        reg = OrdBoostRegressor(
+            bin_edges=[25.0, 50.0, 75.0], max_iter=10, random_state=0
+        )
+        reg.fit(X, y)
+
+        assert reg.mapper_.n_bins_ == 4
+        np.testing.assert_array_equal(
+            reg.classifier_.classes_, np.array([0, 1, 2, 3])
+        )
+        pmf = reg.classifier_.predict_proba(X)
+        assert pmf.shape[1] == 4
+        preds = reg.predict(X)
+        assert preds.shape == (60,)
+        assert np.all(np.isfinite(preds))
 
 
 class TestPredictDist:
