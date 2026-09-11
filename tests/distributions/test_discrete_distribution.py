@@ -241,3 +241,53 @@ class TestPpf:
         scalar_result = sample_distribution.ppf(0.5)
         array_result = sample_distribution.ppf(np.array([0.5, 0.9]))
         np.testing.assert_array_equal(scalar_result, array_result[:, 0])
+
+
+class TestMedian:
+    """Integration tests for the inherited PredictiveDistribution.median()
+    against a real DiscretePredictiveDistribution (the base class's own
+    tests only exercise median() via an abstract Dummy)."""
+
+    def test_median_matches_ppf_at_half(self) -> None:
+        """Test that median() equals ppf(0.5) for a real discrete
+        distribution, consistent with the cdf fixture used elsewhere in
+        this file (sample 0's cdf reaches 0.5 at class 0, sample 1 at
+        class 10, sample 2 at class 30)."""
+        pmf = np.array(
+            [
+                [0.70, 0.20, 0.10, 0.00],
+                [0.10, 0.40, 0.40, 0.10],
+                [0.00, 0.05, 0.15, 0.80],
+            ]
+        )
+        classes = np.array([0, 10, 20, 30])
+        dist = DiscretePredictiveDistribution(pmf=pmf, classes=classes)
+        np.testing.assert_array_equal(dist.median(), np.array([0, 10, 30]))
+        np.testing.assert_array_equal(dist.median(), dist.ppf(0.5))
+
+
+class TestInterval:
+    """Integration tests for the inherited PredictiveDistribution.interval()
+    against a real DiscretePredictiveDistribution (the base class's own
+    tests only exercise interval() via an abstract Dummy)."""
+
+    def test_interval_bounds_match_expected_classes(self) -> None:
+        """Test that interval() returns the expected lower/upper class
+        bounds for a real discrete distribution (10th/90th percentile
+        classes at alpha=0.20), and that they correctly bracket the
+        median for every sample."""
+        pmf = np.array(
+            [
+                [0.70, 0.20, 0.10, 0.00],
+                [0.10, 0.40, 0.40, 0.10],
+                [0.00, 0.05, 0.15, 0.80],
+            ]
+        )
+        classes = np.array([0, 10, 20, 30])
+        dist = DiscretePredictiveDistribution(pmf=pmf, classes=classes)
+
+        lower, upper = dist.interval(alpha=0.20)
+        np.testing.assert_array_equal(lower, np.array([0, 0, 20]))
+        np.testing.assert_array_equal(upper, np.array([20, 20, 30]))
+        assert np.all(lower <= dist.median())
+        assert np.all(dist.median() <= upper)

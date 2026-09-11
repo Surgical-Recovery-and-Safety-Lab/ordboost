@@ -229,6 +229,67 @@ class TestPpf:
         array_result = sample_distribution.ppf(np.array([0.6, 0.9]))
         np.testing.assert_allclose(scalar_result, array_result[:, 0], atol=1e-6)
 
+    def test_ppf_one_with_flat_top_plateau_returns_plateau_start(self) -> None:
+        """Test the safe-division guard (`where=denom != 0`) in the
+        scalar branch of _ppf: when grid_cdf reaches 1.0 one grid point
+        early (a flat top plateau, e.g. from a mapper's ceiling_atom
+        where no probability mass remains above the atom), ppf(1.0)'s
+        denom = q1 - q0 is exactly 0 at the clipped index. Without the
+        `where` guard this would raise/produce NaN; the guarded result
+        (t=0) resolves to the plateau's starting grid point, not the
+        true final grid_y."""
+        grid_y = np.array([0.0, 10.0, 20.0])
+        grid_cdf = np.array([[0.0, 1.0, 1.0]])
+        dist = ContinuousPredictiveDistribution(grid_y=grid_y, grid_cdf=grid_cdf)
+        result = dist.ppf(1.0)
+        assert np.all(np.isfinite(result))
+        np.testing.assert_allclose(result, [10.0], atol=1e-6)
+
+
+class TestMedian:
+    """Integration tests for the inherited PredictiveDistribution.median()
+    against a real ContinuousPredictiveDistribution (the base class's own
+    tests only exercise median() via an abstract Dummy)."""
+
+    def test_median_matches_ppf_at_half(self) -> None:
+        """Test that median() equals ppf(0.5), interpolated against the
+        same grid_y/grid_cdf fixture used by TestMean/TestPpf above."""
+        grid_y = np.array([0.0, 10.0, 20.0, 30.0])
+        grid_cdf = np.array(
+            [
+                [0.0, 0.4, 0.8, 1.0],
+                [0.0, 0.1, 0.9, 1.0],
+            ]
+        )
+        dist = ContinuousPredictiveDistribution(grid_y=grid_y, grid_cdf=grid_cdf)
+        np.testing.assert_allclose(dist.median(), [12.5, 15.0], atol=1e-6)
+        np.testing.assert_allclose(dist.median(), dist.ppf(0.5))
+
+
+class TestInterval:
+    """Integration tests for the inherited PredictiveDistribution.interval()
+    against a real ContinuousPredictiveDistribution (the base class's own
+    tests only exercise interval() via an abstract Dummy)."""
+
+    def test_interval_bounds_match_expected_values(self) -> None:
+        """Test that interval() returns the expected interpolated
+        lower/upper bounds at alpha=0.20 (10th/90th percentiles), and
+        that they correctly bracket the median for every sample."""
+        grid_y = np.array([0.0, 10.0, 20.0, 30.0])
+        grid_cdf = np.array(
+            [
+                [0.0, 0.4, 0.8, 1.0],
+                [0.0, 0.1, 0.9, 1.0],
+            ]
+        )
+        dist = ContinuousPredictiveDistribution(grid_y=grid_y, grid_cdf=grid_cdf)
+
+        lower, upper = dist.interval(alpha=0.20)
+        np.testing.assert_allclose(lower, [2.5, 10.0], atol=1e-6)
+        np.testing.assert_allclose(upper, [25.0, 20.0], atol=1e-6)
+        assert np.all(lower <= dist.median())
+        assert np.all(dist.median() <= upper)
+
 
 class TestCdf:
     """Tests for ContinuousPredictiveDistribution.cdf."""
