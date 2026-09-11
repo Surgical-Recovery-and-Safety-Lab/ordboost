@@ -36,7 +36,8 @@ class TestInit:
 
     def test_kwargs_stored_separately(self) -> None:
         """Test that unrecognized keyword arguments are captured in self.kwargs
-        rather than raising at construction time."""
+        rather than raising at construction time.
+        """
         reg = OrdBoostRegressor(max_leaf_nodes=15, early_stopping=False)
         assert reg.kwargs == {"max_leaf_nodes": 15, "early_stopping": False}
 
@@ -53,7 +54,8 @@ class TestComputeBinEdges:
 
     def test_custom_bin_edges_ignores_y(self) -> None:
         """Test that when bin_edges is explicitly set, y's values do not
-        influence the resolved edges at all."""
+        influence the resolved edges at all.
+        """
         edges = [0.0, 10.0, 20.0]
         reg = OrdBoostRegressor(bin_edges=edges)
         resolved_a = reg._compute_bin_edges(np.array([100.0, 200.0]))
@@ -89,7 +91,8 @@ class TestComputeBinEdges:
         of y at n_bins + 1 evenly spaced probability levels, with the two
         outer levels (0.0 and 1.0) dropped since they are not interior
         thresholds -- mirroring bin_strategy="uniform", which drops the
-        corresponding [y.min(), y.max()] endpoints via its own [1:-1] slice."""
+        corresponding [y.min(), y.max()] endpoints via its own [1:-1] slice.
+        """
         reg = OrdBoostRegressor(n_bins=4, bin_strategy="quantile")
         y = np.linspace(0.0, 100.0, 101)
         edges = reg._compute_bin_edges(y)
@@ -98,7 +101,8 @@ class TestComputeBinEdges:
 
     def test_bin_strategy_quantile_deduplicates_dense_regions(self) -> None:
         """Test that duplicate quantile edges (from heavily repeated y values)
-        are deduplicated rather than producing zero-width bins."""
+        are deduplicated rather than producing zero-width bins.
+        """
         reg = OrdBoostRegressor(n_bins=10, bin_strategy="quantile")
         y = np.concatenate([np.zeros(90), np.linspace(1.0, 10.0, 10)])
         edges = reg._compute_bin_edges(y)
@@ -106,7 +110,8 @@ class TestComputeBinEdges:
 
     def test_bin_strategy_uniform(self) -> None:
         """Test uniform bin strategy: edges are evenly spaced across
-        [y.min(), y.max()]."""
+        [y.min(), y.max()].
+        """
         reg = OrdBoostRegressor(n_bins=4, bin_strategy="uniform")
         y = np.array([0.0, 100.0])
         edges = reg._compute_bin_edges(y)
@@ -137,7 +142,8 @@ class TestResolveMapper:
         self, shortcut: str, expected_cls: type[BaseBinMapper]
     ) -> None:
         """Test that valid string shortcuts resolve to the correct mapper
-        class, with bin_edges_ assigned."""
+        class, with bin_edges_ assigned.
+        """
         reg = OrdBoostRegressor(mapper=shortcut)  # type: ignore[arg-type]
         reg.bin_edges_ = np.array([0.0, 10.0, 20.0])
         resolved = reg._resolve_mapper()
@@ -154,7 +160,8 @@ class TestResolveMapper:
 
     def test_mapper_kwargs_forwarded_to_string_shortcut(self) -> None:
         """Test that mapper_kwargs are passed through when instantiating a
-        string-shortcut mapper."""
+        string-shortcut mapper.
+        """
         reg = OrdBoostRegressor(mapper="continuous", mapper_kwargs={"resolution": 2.0})
         reg.bin_edges_ = np.array([0.0, 10.0, 20.0])
         resolved = cast(ContinuousBinMapper, reg._resolve_mapper())
@@ -162,7 +169,8 @@ class TestResolveMapper:
 
     def test_unconfigured_custom_instance_is_cloned_and_assigned_edges(self) -> None:
         """Test that a BaseBinMapper instance with no bin_edges of its own
-        is cloned (not mutated in place) and assigned bin_edges_."""
+        is cloned (not mutated in place) and assigned bin_edges_.
+        """
         custom_mapper = EmpiricalMeanBinMapper(bin_edges=None)
         reg = OrdBoostRegressor(mapper=custom_mapper)
         reg.bin_edges_ = np.array([0.0, 5.0, 10.0])
@@ -175,7 +183,8 @@ class TestResolveMapper:
 
     def test_custom_instance_with_matching_edges_does_not_raise(self) -> None:
         """Test that a mapper instance pre-configured with bin_edges
-        matching bin_edges_ exactly is accepted without error."""
+        matching bin_edges_ exactly is accepted without error.
+        """
         matching_edges = np.array([0.0, 5.0, 10.0])
         custom_mapper = QuantileBinMapper(bin_edges=matching_edges.tolist())
         reg = OrdBoostRegressor(mapper=custom_mapper)
@@ -186,7 +195,8 @@ class TestResolveMapper:
     def test_custom_instance_with_conflicting_edges_raises(self) -> None:
         """Test that a mapper instance pre-configured with bin_edges that
         differ from bin_edges_ raises ValueError, since OrdBoostRegressor
-        is the single source of truth for bin edges."""
+        is the single source of truth for bin edges.
+        """
         custom_mapper = QuantileBinMapper(bin_edges=[0.0, 3.0, 6.0, 9.0])
         reg = OrdBoostRegressor(mapper=custom_mapper)
         reg.bin_edges_ = np.array([0.0, 5.0, 10.0])
@@ -202,7 +212,8 @@ class TestResolveMapper:
 
     def test_invalid_type_raises(self) -> None:
         """Test that a mapper value that is neither a string nor a
-        BaseBinMapper instance raises ValueError."""
+        BaseBinMapper instance raises ValueError.
+        """
         reg = OrdBoostRegressor(mapper=12345)  # type: ignore[arg-type]
         reg.bin_edges_ = np.array([0.0, 10.0, 20.0])
         with pytest.raises(ValueError, match="Expected 'mapper' to be a valid string"):
@@ -253,7 +264,8 @@ class TestFit:
         self, synthetic_data, custom_mapper
     ) -> None:
         """Test fitting with various unconfigured mapper instances passed
-        directly, rather than string shortcuts."""
+        directly, rather than string shortcuts.
+        """
         X, y = synthetic_data
         reg = OrdBoostRegressor(
             n_bins=5, mapper=custom_mapper, max_iter=5, random_state=42
@@ -270,7 +282,8 @@ class TestFit:
 
     def test_fit_nan_in_y_raises(self, synthetic_data) -> None:
         """Test that NaN values in y raise ValueError, distinguishing this
-        from the permissive NaN handling applied to X."""
+        from the permissive NaN handling applied to X.
+        """
         X, y = synthetic_data
         y = y.copy()
         y[0] = np.nan
@@ -289,7 +302,8 @@ class TestFit:
 
     def test_fit_nan_in_X_is_permitted(self, synthetic_data) -> None:
         """Test that NaN values in X do not raise, since
-        HistGradientBoostingClassifier handles missing features natively."""
+        HistGradientBoostingClassifier handles missing features natively.
+        """
         X, y = synthetic_data
         X = X.copy()
         X[0, 0] = np.nan
@@ -301,7 +315,8 @@ class TestFit:
         """Test that the fitted classifier's number of classes matches the
         mapper's n_bins_, confirming both were fit against the same
         single-source-of-truth y_binned rather than independently
-        digitized values that could disagree."""
+        digitized values that could disagree.
+        """
         X, y = synthetic_data
         reg = OrdBoostRegressor(n_bins=5, max_iter=5, random_state=42)
         reg.fit(X, y)
@@ -312,7 +327,8 @@ class TestFit:
     ) -> None:
         """Test that fitted y_binned values (indirectly, via classifier
         classes_) never exceed n_bins - 1, guarding against a digitize
-        off-by-one producing an extra out-of-range bin."""
+        off-by-one producing an extra out-of-range bin.
+        """
         X, y = synthetic_data
         reg = OrdBoostRegressor(n_bins=5, max_iter=5, random_state=42)
         reg.fit(X, y)
@@ -326,7 +342,8 @@ class TestFit:
         the underlying OrdBoostClassifier.fit necessary: without it,
         np.unique(y_binned) alone would silently drop the empty bins
         from classes_, leaving classifier_ and mapper_ disagreeing on
-        n_bins."""
+        n_bins.
+        """
         rng = np.random.default_rng(0)
         X = rng.standard_normal((60, 2))
         # Two well-separated clusters; nothing falls in the [25, 75) span,
@@ -340,9 +357,7 @@ class TestFit:
         reg.fit(X, y)
 
         assert reg.mapper_.n_bins_ == 4
-        np.testing.assert_array_equal(
-            reg.classifier_.classes_, np.array([0, 1, 2, 3])
-        )
+        np.testing.assert_array_equal(reg.classifier_.classes_, np.array([0, 1, 2, 3]))
         pmf = reg.classifier_.predict_proba(X)
         assert pmf.shape[1] == 4
         preds = reg.predict(X)
@@ -365,7 +380,8 @@ class TestPredictDist:
 
     def test_returns_continuous_predictive_distribution(self, fitted_model) -> None:
         """Test that predict_dist returns a ContinuousPredictiveDistribution
-        with one row per sample."""
+        with one row per sample.
+        """
         reg, X, _ = fitted_model
         dist = reg.predict_dist(X)
         assert isinstance(dist, ContinuousPredictiveDistribution)
@@ -373,7 +389,8 @@ class TestPredictDist:
 
     def test_single_sample_evaluations(self, fitted_model) -> None:
         """Test that distribution methods work correctly for a single-row
-        prediction."""
+        prediction.
+        """
         reg, X, _ = fitted_model
         dist = reg.predict_dist(X[[0]])
         assert dist.mean().shape == (1,)
@@ -410,7 +427,8 @@ class TestPredict:
 
     def test_median_method(self, fitted_model) -> None:
         """Test that method='median' returns the distribution's median,
-        not its mean."""
+        not its mean.
+        """
         reg, X, _ = fitted_model
         dist = reg.predict_dist(X)
         np.testing.assert_allclose(reg.predict(X, method="median"), dist.median())
@@ -427,7 +445,8 @@ class TestPredict:
 
     def test_1d_single_sample_raises(self, fitted_model) -> None:
         """Test that passing a 1D array (rather than a single-row 2D
-        array) raises ValueError."""
+        array) raises ValueError.
+        """
         reg, X, _ = fitted_model
         with pytest.raises(ValueError, match="Expected 2D array"):
             reg.predict(X[0])
@@ -452,7 +471,8 @@ class TestGetSetParams:
 
     def test_get_params_merges_kwargs_at_top_level(self) -> None:
         """Test that get_params exposes both explicit fields and pass-through
-        kwargs at the top level, with no raw 'kwargs' key visible."""
+        kwargs at the top level, with no raw 'kwargs' key visible.
+        """
         reg = OrdBoostRegressor(
             learning_rate=0.05, max_leaf_nodes=15, early_stopping=False
         )
@@ -464,7 +484,8 @@ class TestGetSetParams:
 
     def test_set_params_updates_explicit_and_kwargs_fields(self) -> None:
         """Test that set_params correctly routes known fields to attributes
-        and unknown fields into self.kwargs."""
+        and unknown fields into self.kwargs.
+        """
         reg = OrdBoostRegressor(learning_rate=0.1, max_leaf_nodes=31)
         reg.set_params(learning_rate=0.01, max_leaf_nodes=15, min_samples_leaf=10)
 
@@ -474,14 +495,16 @@ class TestGetSetParams:
 
     def test_set_params_with_no_arguments_returns_self(self) -> None:
         """Test that calling set_params with no arguments is a no-op that
-        still returns self."""
+        still returns self.
+        """
         reg = OrdBoostRegressor()
         result = reg.set_params()
         assert result is reg
 
     def test_clone_compatibility(self) -> None:
         """Test that sklearn.base.clone produces an independent, correctly
-        parameterized copy, including pass-through kwargs."""
+        parameterized copy, including pass-through kwargs.
+        """
         reg = OrdBoostRegressor(max_iter=20, max_bins=64, random_state=42)
         cloned = clone(reg)
 
@@ -492,7 +515,8 @@ class TestGetSetParams:
 
     def test_grid_search_cv_compatibility(self) -> None:
         """Test that GridSearchCV can tune both explicit and pass-through
-        hyperparameters without error."""
+        hyperparameters without error.
+        """
         rng = np.random.default_rng(0)
         X = rng.standard_normal((40, 2))
         y = X[:, 0] * 3.0 + rng.standard_normal(40)

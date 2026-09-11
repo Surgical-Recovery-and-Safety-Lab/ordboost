@@ -11,7 +11,8 @@ class TestInit:
 
     def test_valid_construction_stores_data(self) -> None:
         """Test that a valid grid_y/grid_cdf pair constructs without
-        error and stores the expected values."""
+        error and stores the expected values.
+        """
         grid_y = np.array([0.0, 10.0, 20.0])
         grid_cdf = np.array([[0.0, 0.5, 1.0]])
         dist = ContinuousPredictiveDistribution(grid_y=grid_y, grid_cdf=grid_cdf)
@@ -48,7 +49,8 @@ class TestInit:
 
     def test_repeated_grid_y_values_raises(self) -> None:
         """Test that duplicate (tied) grid_y values raise ValueError, since
-        ascending order must be strict, not non-decreasing."""
+        ascending order must be strict, not non-decreasing.
+        """
         with pytest.raises(ValueError, match="strictly ascending"):
             ContinuousPredictiveDistribution(
                 grid_y=np.array([0.0, 10.0, 10.0]), grid_cdf=np.array([[0.0, 0.5, 1.0]])
@@ -71,7 +73,8 @@ class TestInit:
     def test_out_of_bound_values_are_clipped_before_boundary_check(self) -> None:
         """Test that grid_cdf values outside [0.0, 1.0] are clipped first,
         so a row like [-0.1, 0.5, 1.2] passes boundary validation after
-        clipping to [0.0, 0.5, 1.0]."""
+        clipping to [0.0, 0.5, 1.0].
+        """
         grid_y = np.array([0.0, 10.0, 20.0])
         grid_cdf = np.array([[-0.1, 0.5, 1.2]])
         dist = ContinuousPredictiveDistribution(grid_y=grid_y, grid_cdf=grid_cdf)
@@ -79,7 +82,8 @@ class TestInit:
 
     def test_multi_row_grid_cdf_only_one_bad_row_raises(self) -> None:
         """Test that a single boundary-violating row among otherwise valid
-        rows still raises ValueError."""
+        rows still raises ValueError.
+        """
         grid_y = np.array([0.0, 10.0, 20.0])
         grid_cdf = np.array([[0.0, 0.5, 1.0], [0.0, 0.5, 0.9]])
         with pytest.raises(ValueError, match="must end at 1.0"):
@@ -139,7 +143,8 @@ class TestMean:
 
     def test_mean_matches_hand_computation(self, sample_distribution) -> None:
         """Test expected value calculation via trapezoidal integration
-        against hand-derived expected values."""
+        against hand-derived expected values.
+        """
         means = sample_distribution.mean()
         expected_means = np.array([13.0, 15.0])
         np.testing.assert_allclose(means, expected_means, atol=1e-6)
@@ -151,7 +156,8 @@ class TestMean:
     def test_uniform_cdf_mean_equals_midpoint(self) -> None:
         """Test that a perfectly uniform CDF across the grid yields a mean
         equal to the midpoint of the range, as a sanity check on the
-        integration formula."""
+        integration formula.
+        """
         grid_y = np.array([0.0, 10.0])
         grid_cdf = np.array([[0.0, 1.0]])
         dist = ContinuousPredictiveDistribution(grid_y=grid_y, grid_cdf=grid_cdf)
@@ -180,7 +186,8 @@ class TestPpf:
         self, sample_distribution
     ) -> None:
         """Test ppf at a quantile that exactly matches sample 0's CDF grid
-        value (grid_cdf[0] hits 0.4 exactly at y=10)."""
+        value (grid_cdf[0] hits 0.4 exactly at y=10).
+        """
         result = sample_distribution.ppf(0.4)
         np.testing.assert_allclose(result[0], 10.0, atol=1e-6)
 
@@ -189,7 +196,8 @@ class TestPpf:
     ) -> None:
         """Test ppf at a quantile that does not exactly match sample 1's CDF
         grid (0.4 falls strictly between grid_cdf[1]'s 0.1 at y=10 and 0.9
-        at y=20), requiring linear interpolation."""
+        at y=20), requiring linear interpolation.
+        """
         result = sample_distribution.ppf(0.4)
         # t = (0.4 - 0.1) / (0.9 - 0.1) = 0.375 -> y = 10 + 0.375 * 10 = 13.75
         np.testing.assert_allclose(result[1], 13.75, atol=1e-6)
@@ -215,7 +223,8 @@ class TestPpf:
 
     def test_ppf_array_output_shape(self, sample_distribution) -> None:
         """Test that an array of quantiles returns a
-        (n_samples, n_quantiles) shaped result."""
+        (n_samples, n_quantiles) shaped result.
+        """
         result = sample_distribution.ppf(np.array([0.1, 0.5, 0.9]))
         assert result.shape == (2, 3)
 
@@ -224,7 +233,8 @@ class TestPpf:
     ) -> None:
         """Test that ppf(q) as a scalar matches the corresponding column
         of ppf([q, ...]), for consistency between the scalar and array
-        branches of _ppf."""
+        branches of _ppf.
+        """
         scalar_result = sample_distribution.ppf(0.6)
         array_result = sample_distribution.ppf(np.array([0.6, 0.9]))
         np.testing.assert_allclose(scalar_result, array_result[:, 0], atol=1e-6)
@@ -237,7 +247,8 @@ class TestPpf:
         denom = q1 - q0 is exactly 0 at the clipped index. Without the
         `where` guard this would raise/produce NaN; the guarded result
         (t=0) resolves to the plateau's starting grid point, not the
-        true final grid_y."""
+        true final grid_y.
+        """
         grid_y = np.array([0.0, 10.0, 20.0])
         grid_cdf = np.array([[0.0, 1.0, 1.0]])
         dist = ContinuousPredictiveDistribution(grid_y=grid_y, grid_cdf=grid_cdf)
@@ -249,11 +260,13 @@ class TestPpf:
 class TestMedian:
     """Integration tests for the inherited PredictiveDistribution.median()
     against a real ContinuousPredictiveDistribution (the base class's own
-    tests only exercise median() via an abstract Dummy)."""
+    tests only exercise median() via an abstract Dummy).
+    """
 
     def test_median_matches_ppf_at_half(self) -> None:
         """Test that median() equals ppf(0.5), interpolated against the
-        same grid_y/grid_cdf fixture used by TestMean/TestPpf above."""
+        same grid_y/grid_cdf fixture used by TestMean/TestPpf above.
+        """
         grid_y = np.array([0.0, 10.0, 20.0, 30.0])
         grid_cdf = np.array(
             [
@@ -269,12 +282,14 @@ class TestMedian:
 class TestInterval:
     """Integration tests for the inherited PredictiveDistribution.interval()
     against a real ContinuousPredictiveDistribution (the base class's own
-    tests only exercise interval() via an abstract Dummy)."""
+    tests only exercise interval() via an abstract Dummy).
+    """
 
     def test_interval_bounds_match_expected_values(self) -> None:
         """Test that interval() returns the expected interpolated
         lower/upper bounds at alpha=0.20 (10th/90th percentiles), and
-        that they correctly bracket the median for every sample."""
+        that they correctly bracket the median for every sample.
+        """
         grid_y = np.array([0.0, 10.0, 20.0, 30.0])
         grid_cdf = np.array(
             [
@@ -308,7 +323,8 @@ class TestCdf:
 
     def test_scalar_y_exact_grid_lookup(self, sample_distribution) -> None:
         """Test scalar CDF evaluation at a value exactly on the grid,
-        broadcast across all samples."""
+        broadcast across all samples.
+        """
         probs = sample_distribution.cdf(10.0)
         assert probs.shape == (2,)
         np.testing.assert_allclose(probs, [0.4, 0.1], atol=1e-6)
@@ -341,7 +357,8 @@ class TestCdf:
 
     def test_vectorized_y_extrapolation(self, sample_distribution) -> None:
         """Test that vectorized evaluation also extrapolates flat at the
-        grid boundaries, per-sample."""
+        grid boundaries, per-sample.
+        """
         extrap_targets = np.array([-5.0, 35.0])
         probs = sample_distribution.cdf(extrap_targets)
         np.testing.assert_allclose(probs, [0.0, 1.0])

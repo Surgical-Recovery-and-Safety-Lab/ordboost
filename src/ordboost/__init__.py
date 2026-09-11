@@ -1,4 +1,4 @@
-"""OrdBoost: Non-parametric discrete ordinal-binning gradient boosting and continuous regression."""
+"""Non-parametric ordinal gradient boosting and probabilistic calibration."""
 
 from ordboost.distributions import (
     ContinuousPredictiveDistribution,

@@ -980,7 +980,8 @@ class ContinuousBinMapper(BaseBinMapper):
             or self.max_grid_points <= 0
         ):
             raise ValueError(
-                f"'max_grid_points' must be a positive integer, got {self.max_grid_points}."
+                "'max_grid_points' must be a positive integer, got "
+                f"{self.max_grid_points}."
             )
         self.resolution_ = float(self.resolution)
         self._n_generated_points = 0

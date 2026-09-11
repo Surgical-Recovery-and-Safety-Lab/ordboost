@@ -34,7 +34,8 @@ class TestPredictiveDistributionABC:
 
     def test_cannot_instantiate_abc_directly(self) -> None:
         """Test that instantiating PredictiveDistribution directly raises
-        TypeError, since mean() and _ppf() are abstract."""
+        TypeError, since mean() and _ppf() are abstract.
+        """
         with pytest.raises(TypeError):
             PredictiveDistribution()  # type: ignore[abstract]
 
@@ -44,14 +45,16 @@ class TestPpf:
 
     def test_scalar_delegates_to_ppf_underscore(self) -> None:
         """Test that a scalar q is passed through to _ppf and its output
-        (a 1D array) is returned unmodified."""
+        (a 1D array) is returned unmodified.
+        """
         dist = DummyDistribution(n_samples=3)
         result = dist.ppf(0.5)
         np.testing.assert_allclose(result, [50.0, 50.0, 50.0])
 
     def test_array_delegates_to_ppf_underscore(self) -> None:
         """Test that a 1D array q is passed through to _ppf and its
-        output (a 2D array) is returned unmodified."""
+        output (a 2D array) is returned unmodified.
+        """
         dist = DummyDistribution(n_samples=2)
         result = dist.ppf(np.array([0.1, 0.9]))
         assert result.shape == (2, 2)
@@ -77,21 +80,24 @@ class TestPpf:
 
     def test_one_element_array_within_range_does_not_raise(self) -> None:
         """Test that an array q with any single out-of-range element
-        raises, isolating the elementwise range check."""
+        raises, isolating the elementwise range check.
+        """
         dist = DummyDistribution()
         with pytest.raises(ValueError, match="within \\[0.0, 1.0\\]"):
             dist.ppf(np.array([0.1, 0.5, 1.5]))
 
     def test_2d_q_raises_value_error(self) -> None:
         """Test that a 2D q array raises ValueError before reaching _ppf,
-        per the shape contract stated in ppf's docstring."""
+        per the shape contract stated in ppf's docstring.
+        """
         dist = DummyDistribution()
         with pytest.raises(ValueError, match="scalar or 1D array"):
             dist.ppf(np.array([[0.1, 0.5], [0.2, 0.6]]))
 
     def test_scalar_result_is_ndarray(self) -> None:
         """Test that ppf's return type is an ndarray, not a Python list
-        or scalar, even for scalar q."""
+        or scalar, even for scalar q.
+        """
         dist = DummyDistribution()
         assert isinstance(dist.ppf(0.5), np.ndarray)
 
@@ -123,7 +129,8 @@ class TestInterval:
     def test_uses_correct_quantile_levels(self) -> None:
         """Test that interval(alpha) queries ppf at exactly alpha/2 and
         1 - alpha/2, verified via DummyDistribution's deterministic
-        q_arr * 100 output."""
+        q_arr * 100 output.
+        """
         dist = DummyDistribution(n_samples=1)
         lower, upper = dist.interval(alpha=0.20)
         # alpha=0.20 -> lower_q=0.10, upper_q=0.90 -> *100 -> 10.0, 90.0
@@ -132,7 +139,8 @@ class TestInterval:
 
     def test_default_alpha(self) -> None:
         """Test the default alpha=0.10 produces the expected 5th/95th
-        percentile query levels."""
+        percentile query levels.
+        """
         dist = DummyDistribution(n_samples=1)
         lower, upper = dist.interval()
         np.testing.assert_allclose(lower, [5.0])
@@ -188,7 +196,8 @@ class TestValidateStrictlyAscending:
 
     def test_repeated_consecutive_values_raises(self) -> None:
         """Test that a tie between consecutive values raises ValueError,
-        since strictly ascending excludes equal neighbours."""
+        since strictly ascending excludes equal neighbours.
+        """
         with pytest.raises(ValueError, match="strictly ascending"):
             PredictiveDistribution._validate_strictly_ascending(
                 "test_array", np.array([1.0, 2.0, 2.0, 3.0])
@@ -196,7 +205,8 @@ class TestValidateStrictlyAscending:
 
     def test_single_non_monotonic_pair_raises(self) -> None:
         """Test that a single out-of-order pair amid otherwise ascending
-        values still raises ValueError."""
+        values still raises ValueError.
+        """
         with pytest.raises(ValueError, match="strictly ascending"):
             PredictiveDistribution._validate_strictly_ascending(
                 "test_array", np.array([1.0, 2.0, 1.5, 4.0])
@@ -204,14 +214,16 @@ class TestValidateStrictlyAscending:
 
     def test_single_element_array_does_not_raise(self) -> None:
         """Test that a single-element array is trivially valid, since
-        there are no consecutive pairs to compare."""
+        there are no consecutive pairs to compare.
+        """
         PredictiveDistribution._validate_strictly_ascending(
             "test_array", np.array([5.0])
         )
 
     def test_error_message_includes_provided_name(self) -> None:
         """Test that the error message uses the caller-supplied name,
-        so validation errors from different subclasses are distinguishable."""
+        so validation errors from different subclasses are distinguishable.
+        """
         with pytest.raises(ValueError, match="'my_custom_field'"):
             PredictiveDistribution._validate_strictly_ascending(
                 "my_custom_field", np.array([3.0, 1.0])

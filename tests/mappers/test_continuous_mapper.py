@@ -12,7 +12,8 @@ class TestInit:
 
     def test_default_parameters(self) -> None:
         """Test that resolution, density_weighted, and max_grid_points
-        default as documented."""
+        default as documented.
+        """
         mapper = ContinuousBinMapper()
         assert mapper.resolution == 1.0
         assert mapper.density_weighted is True
@@ -20,7 +21,8 @@ class TestInit:
 
     def test_base_parameters_threaded_through_super(self) -> None:
         """Test that base-class parameters are correctly passed to
-        BaseBinMapper.__init__ rather than silently dropped."""
+        BaseBinMapper.__init__ rather than silently dropped.
+        """
         mapper = ContinuousBinMapper(
             bin_edges=[0.0, 10.0],
             resolution=2.0,
@@ -47,7 +49,8 @@ class TestSklearnCloneCompatibility:
     def test_clone_preserves_params(self) -> None:
         """Test that clone() reproduces the same resolution/density_weighted
         parameters, confirming they are threaded correctly for
-        get_params/set_params."""
+        get_params/set_params.
+        """
         mapper = ContinuousBinMapper(
             bin_edges=[10.0, 20.0], resolution=2.0, density_weighted=False
         )
@@ -89,7 +92,8 @@ class TestIntraBinPoints:
 
     def test_integer_resolution_enumerates_every_integer(self) -> None:
         """Test that resolution=1.0 returns every integer strictly
-        between low and high."""
+        between low and high.
+        """
         mapper = ContinuousBinMapper(resolution=1.0)
         mapper._validate_intra_bin_params()
         points, _ = mapper._intra_bin_points(np.array([]), low=10.0, high=15.0, k=0)
@@ -97,7 +101,8 @@ class TestIntraBinPoints:
 
     def test_points_exclude_boundaries(self) -> None:
         """Test that returned points never include low or high, since
-        BaseBinMapper._build_grid adds those separately."""
+        BaseBinMapper._build_grid adds those separately.
+        """
         mapper = ContinuousBinMapper(resolution=1.0)
         mapper._validate_intra_bin_params()
         points, _ = mapper._intra_bin_points(np.array([]), low=10.0, high=15.0, k=0)
@@ -106,7 +111,8 @@ class TestIntraBinPoints:
 
     def test_bin_narrower_than_resolution_returns_empty(self) -> None:
         """Test that a bin narrower than resolution_ produces no interior
-        points."""
+        points.
+        """
         mapper = ContinuousBinMapper(resolution=5.0)
         mapper._validate_intra_bin_params()
         points, weights = mapper._intra_bin_points(
@@ -117,7 +123,8 @@ class TestIntraBinPoints:
 
     def test_density_weighted_true_uses_empirical_fraction(self) -> None:
         """Test that density_weighted=True computes each point's weight
-        as the empirical fraction of bin_data at or below it."""
+        as the empirical fraction of bin_data at or below it.
+        """
         mapper = ContinuousBinMapper(resolution=1.0, density_weighted=True)
         mapper._validate_intra_bin_params()
         bin_data = np.array([10.5, 10.5, 12.5])  # skewed toward the low end
@@ -127,7 +134,8 @@ class TestIntraBinPoints:
 
     def test_density_weighted_false_uses_uniform_interpolation(self) -> None:
         """Test that density_weighted=False ignores bin_data entirely and
-        uses uniform linear interpolation across the bin width."""
+        uses uniform linear interpolation across the bin width.
+        """
         mapper = ContinuousBinMapper(resolution=2.5, density_weighted=False)
         mapper._validate_intra_bin_params()
         bin_data = np.array([10.5, 10.5, 12.5])  # should be ignored
@@ -140,7 +148,8 @@ class TestIntraBinPoints:
     ) -> None:
         """Test that an empty bin falls back to uniform interpolation
         regardless of density_weighted, since there is no data to
-        compute an empirical fraction from."""
+        compute an empirical fraction from.
+        """
         mapper = ContinuousBinMapper(resolution=2.5, density_weighted=True)
         mapper._validate_intra_bin_params()
         points, weights = mapper._intra_bin_points(
@@ -159,7 +168,8 @@ class TestIntraBinPoints:
 
     def test_exceeding_max_grid_points_raises(self) -> None:
         """Test that a resolution generating more points than
-        max_grid_points raises ValueError."""
+        max_grid_points raises ValueError.
+        """
         mapper = ContinuousBinMapper(resolution=0.001, max_grid_points=10)
         mapper._validate_intra_bin_params()
         with pytest.raises(ValueError, match="max_grid_points"):
@@ -167,7 +177,8 @@ class TestIntraBinPoints:
 
     def test_max_grid_points_accumulates_across_bins(self) -> None:
         """Test that the point limit is enforced cumulatively across
-        multiple calls (i.e. multiple bins), not reset per bin."""
+        multiple calls (i.e. multiple bins), not reset per bin.
+        """
         mapper = ContinuousBinMapper(resolution=1.0, max_grid_points=5)
         mapper._validate_intra_bin_params()
         mapper._intra_bin_points(np.array([]), low=0.0, high=4.0, k=0)  # 3 points, ok
@@ -184,7 +195,8 @@ class TestFitIntegration:
 
     def test_fitted_grid_contains_every_integer_in_range(self) -> None:
         """Test that after fit with resolution=1.0, grid_y_ contains
-        every achievable integer value, matching the DAOH use case."""
+        every achievable integer value, matching the DAOH use case.
+        """
         mapper = ContinuousBinMapper(
             bin_edges=[0.0, 5.0], resolution=1.0, lower_bound=None
         )
@@ -195,7 +207,8 @@ class TestFitIntegration:
     def test_nominal_edges_included_when_unbounded(self) -> None:
         """Test that with lower_bound=None and upper_bound=None, the
         nominal bin_edges appear in the grid even when observed data doesn't
-        reach them."""
+        reach them.
+        """
         mapper = ContinuousBinMapper(
             bin_edges=[0.0, 5.0],
             resolution=1.0,
@@ -208,7 +221,8 @@ class TestFitIntegration:
 
     def test_fine_resolution_raises_before_fit_completes(self) -> None:
         """Test that fit itself surfaces the max_grid_points error, not
-        just direct calls to _intra_bin_points."""
+        just direct calls to _intra_bin_points.
+        """
         mapper = ContinuousBinMapper(
             bin_edges=[0.0, 100.0], resolution=0.0001, max_grid_points=100
         )
@@ -218,7 +232,8 @@ class TestFitIntegration:
     def test_refit_resets_point_counter(self) -> None:
         """Test that calling fit() a second time resets the running
         max_grid_points counter (via _validate_intra_bin_params), rather
-        than accumulating the point count across separate fits."""
+        than accumulating the point count across separate fits.
+        """
         mapper = ContinuousBinMapper(
             bin_edges=[0.0, 10.0], resolution=1.0, max_grid_points=20
         )

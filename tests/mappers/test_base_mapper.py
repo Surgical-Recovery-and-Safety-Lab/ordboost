@@ -111,7 +111,8 @@ class TestValidateAtomFlags:
 
     def test_atoms_false_with_bounds_none_does_not_raise(self) -> None:
         """Test that both atom flags False never raises, regardless of
-        whether the bounds are set."""
+        whether the bounds are set.
+        """
         mapper = DummyBinMapper(
             bin_edges=[0.0, 10.0], lower_bound=None, upper_bound=None
         )
@@ -143,7 +144,8 @@ class TestValidateEdges:
     def test_empty_edges_raises(self) -> None:
         """Test that an empty bin_edges array raises ValueError. Under the
         new convention every value in bin_edges is a real threshold, so
-        the minimum valid length is 1 (defining 2 bins), not 2."""
+        the minimum valid length is 1 (defining 2 bins), not 2.
+        """
         mapper = DummyBinMapper(bin_edges=[])
         with pytest.raises(ValueError, match="at least 1 threshold"):
             mapper._validate_edges()
@@ -151,7 +153,8 @@ class TestValidateEdges:
     def test_single_edge_is_valid(self) -> None:
         """Test that a single threshold (defining exactly 2 bins) is
         accepted, confirming the minimum length changed from 2 to 1
-        under the new bin_edges convention."""
+        under the new bin_edges convention.
+        """
         mapper = DummyBinMapper(bin_edges=[5.0])
         edges = mapper._validate_edges()
         np.testing.assert_array_equal(edges, np.array([5.0]))
@@ -175,7 +178,8 @@ class TestDigitize:
     def test_default_digitization_matches_numpy_digitize(self) -> None:
         """Test that digitize matches np.digitize directly on the full
         threshold array with no slicing -- every supplied edge is a real,
-        enforced threshold under the new bin_edges convention."""
+        enforced threshold under the new bin_edges convention.
+        """
         mapper = DummyBinMapper(bin_edges=[10.0, 20.0, 30.0])
         edges = mapper._validate_edges()
         y_cont = np.array([1.0, 11.0, 25.0, 35.0])
@@ -241,7 +245,8 @@ class TestBuildGrid:
     def test_sets_fitted_attributes(self) -> None:
         """Test that _build_grid sets bin_edges_, n_bins_, grid_y_,
         grid_cdf_weights_. n_bins_ = len(bin_edges) + 1 under the new
-        convention (1 threshold -> 2 bins)."""
+        convention (1 threshold -> 2 bins).
+        """
         mapper = DummyBinMapper(bin_edges=[10.0])
         mapper._build_grid(np.array([1.0, 5.0, 15.0]))
         assert hasattr(mapper, "bin_edges_")
@@ -265,7 +270,8 @@ class TestBuildGrid:
 
     def test_lower_bound_none_anchors_to_observed_minimum(self) -> None:
         """Test that lower_bound=None (unbounded) anchors the floor to
-        y_continuous.min()."""
+        y_continuous.min().
+        """
         mapper = DummyBinMapper(bin_edges=[10.0, 20.0], lower_bound=None)
         y_cont = np.array([0.0, 3.0, 15.0])  # observed min (0.0) below edges[0] (10.0)
         mapper._build_grid(y_cont)
@@ -273,7 +279,8 @@ class TestBuildGrid:
 
     def test_lower_bound_set_uses_fixed_value(self) -> None:
         """Test that a set lower_bound anchors the floor to that exact
-        value unconditionally, even when the observed minimum differs."""
+        value unconditionally, even when the observed minimum differs.
+        """
         mapper = DummyBinMapper(bin_edges=[10.0, 20.0], lower_bound=1.0)
         y_cont = np.array([0.0, 3.0, 15.0])  # observed min (0.0) != lower_bound (1.0)
         mapper._build_grid(y_cont)
@@ -281,7 +288,8 @@ class TestBuildGrid:
 
     def test_upper_bound_none_anchors_to_observed_maximum(self) -> None:
         """Test that upper_bound=None (unbounded) anchors the ceiling to
-        y_continuous.max()."""
+        y_continuous.max().
+        """
         mapper = DummyBinMapper(bin_edges=[10.0], upper_bound=None)
         y_cont = np.array(
             [1.0, 5.0, 18.0]
@@ -291,7 +299,8 @@ class TestBuildGrid:
 
     def test_upper_bound_set_uses_fixed_value(self) -> None:
         """Test that a set upper_bound anchors the ceiling to that exact
-        value unconditionally, even when the observed maximum differs."""
+        value unconditionally, even when the observed maximum differs.
+        """
         mapper = DummyBinMapper(bin_edges=[10.0, 20.0], upper_bound=25.0)
         y_cont = np.array([1.0, 5.0, 18.0])
         mapper._build_grid(y_cont)
@@ -302,7 +311,8 @@ class TestBuildGrid:
         ceiling falls back to the last threshold edge (a degenerate
         zero-width bin) rather than producing an inverted range. Unlike
         the old API, there is no equivalent fallback when upper_bound is
-        set to a real value -- a set bound is always used directly."""
+        set to a real value -- a set bound is always used directly.
+        """
         mapper = DummyBinMapper(bin_edges=[10.0, 20.0], upper_bound=None)
         y_cont = np.array([1.0, 5.0, 8.0])  # nothing in the final bin [20, +inf)
         mapper._build_grid(y_cont)
@@ -312,7 +322,8 @@ class TestBuildGrid:
         """Test that with lower_bound=None and an empty first bin, the
         floor falls back to the first threshold edge (a degenerate
         zero-width bin), mirroring the equivalent ceiling-side fallback
-        tested in test_empty_terminal_bin_falls_back_to_edge_when_unbounded."""
+        tested in test_empty_terminal_bin_falls_back_to_edge_when_unbounded.
+        """
         mapper = DummyBinMapper(bin_edges=[10.0, 20.0], lower_bound=None)
         y_cont = np.array([15.0, 25.0])  # nothing in the first bin (-inf, 10)
         mapper._build_grid(y_cont)
@@ -322,7 +333,8 @@ class TestBuildGrid:
         """Test that floor_atom=True with no data in the first bin assigns
         weight 1.0 at the floor anchor point, via _boundary_atom_weight's
         empty-bin fallback -- distinct from the floor_atom_false case
-        (weight 0) and the populated-bin case (an empirical fraction)."""
+        (weight 0) and the populated-bin case (an empirical fraction).
+        """
         mapper = DummyBinMapper(bin_edges=[10.0], floor_atom=True, lower_bound=0.0)
         y_cont = np.array([15.0])  # nothing in bin 0
         mapper._build_grid(y_cont)
@@ -336,7 +348,8 @@ class TestBuildGrid:
         also adds no point but for an unrelated reason. Uses an absolute
         (non-relative) tolerance, as np.isclose's default rtol would
         otherwise coincidentally match the epsilon magnitude being tested
-        for (as in test_ceiling_atom_false_adds_no_extra_point)."""
+        for (as in test_ceiling_atom_false_adds_no_extra_point).
+        """
         mapper = DummyBinMapper(bin_edges=[5.0], ceiling_atom=True, upper_bound=10.0)
         y_cont = np.array([2.0])  # nothing in the final bin [5, 10)
         mapper._build_grid(y_cont)
@@ -350,12 +363,14 @@ class TestBuildGrid:
         """Test that a supplied y_binned array controls bin assignment
         even when it disagrees with what np.digitize would compute for
         the same edges, confirming _build_grid actually uses the supplied
-        labels rather than silently re-deriving bins from y_continuous."""
+        labels rather than silently re-deriving bins from y_continuous.
+        """
         received = {}
 
         class RecordingBinMapper(BaseBinMapper):
             """Dummy mapper that records the bin_data it receives per bin,
-            to confirm which samples were routed to which bin."""
+            to confirm which samples were routed to which bin.
+            """
 
             def _intra_bin_points(self, bin_data, low, high, k):
                 received[k] = bin_data.copy()
@@ -372,7 +387,8 @@ class TestBuildGrid:
     def test_floor_atom_assigns_empirical_weight(self) -> None:
         """Test that floor_atom=True assigns the empirical at-or-below
         fraction as the floor point's cumulative weight, rather than 0.
-        floor_atom now requires lower_bound to be set explicitly."""
+        floor_atom now requires lower_bound to be set explicitly.
+        """
         mapper = DummyBinMapper(bin_edges=[10.0], floor_atom=True, lower_bound=0.0)
         y_cont = np.array([0.0, 0.0, 0.0, 5.0])  # 3 of 4 values at the floor
         mapper._build_grid(y_cont)
@@ -381,7 +397,8 @@ class TestBuildGrid:
 
     def test_floor_atom_false_assigns_zero_weight(self) -> None:
         """Test that floor_atom=False assigns weight 0 at the floor point
-        regardless of how much data sits there."""
+        regardless of how much data sits there.
+        """
         mapper = DummyBinMapper(bin_edges=[10.0], floor_atom=False)
         y_cont = np.array([0.0, 0.0, 0.0, 5.0])
         mapper._build_grid(y_cont)
@@ -392,7 +409,8 @@ class TestBuildGrid:
         """Test that ceiling_atom=True inserts a point just below the
         ceiling, weighted by the empirical strictly-below fraction offset
         into bin-index units. ceiling_atom now requires upper_bound to be
-        set explicitly."""
+        set explicitly.
+        """
         mapper = DummyBinMapper(bin_edges=[5.0], ceiling_atom=True, upper_bound=10.0)
         y_cont = np.array(
             [2.0, 8.0, 10.0, 10.0, 10.0]
@@ -404,11 +422,13 @@ class TestBuildGrid:
     def test_dedup_keeps_maximum_weight_at_collision(self) -> None:
         """Test that when an interior point collides with the bin boundary,
         deduplication retains the larger (boundary) weight rather than the
-        first-encountered (interior) weight."""
+        first-encountered (interior) weight.
+        """
 
         class CollidingBinMapper(BaseBinMapper):
             """Dummy mapper whose interior point always equals the bin's
-            upper edge, forcing a collision with the boundary point."""
+            upper edge, forcing a collision with the boundary point.
+            """
 
             def _intra_bin_points(self, bin_data, low, high, k):
                 return np.array([high]), np.array([k + 0.5])
@@ -420,7 +440,8 @@ class TestBuildGrid:
 
     def test_invalid_atom_flags_raise_before_building(self) -> None:
         """Test that inconsistent atom/boundary flags raise before any
-        grid construction is attempted."""
+        grid construction is attempted.
+        """
         mapper = DummyBinMapper(bin_edges=[10.0], lower_bound=None, floor_atom=True)
         with pytest.raises(ValueError, match="'floor_atom=True' requires"):
             mapper._build_grid(np.array([1.0, 5.0]))
@@ -433,21 +454,24 @@ class TestBuildGrid:
 
     def test_boundary_epsilon_default_value(self) -> None:
         """Test that the default boundary_epsilon of 1e-4 is used when
-        not explicitly set."""
+        not explicitly set.
+        """
         mapper = DummyBinMapper(bin_edges=[10.0])
         mapper._build_grid(np.array([2.0, 8.0]))
         assert mapper.grid_y_[0] == pytest.approx(2.0 - 1e-4)
 
     def test_boundary_epsilon_custom_value_affects_floor_anchor(self) -> None:
         """Test that a custom boundary_epsilon changes the floor anchor
-        point's offset from y_min."""
+        point's offset from y_min.
+        """
         mapper = DummyBinMapper(bin_edges=[10.0], boundary_epsilon=0.5)
         mapper._build_grid(np.array([2.0, 8.0]))
         assert mapper.grid_y_[0] == pytest.approx(2.0 - 0.5)
 
     def test_boundary_epsilon_custom_value_affects_ceiling_atom_point(self) -> None:
         """Test that a custom boundary_epsilon changes the ceiling-atom
-        offset point's position, not just the floor anchor."""
+        offset point's position, not just the floor anchor.
+        """
         mapper = DummyBinMapper(
             bin_edges=[10.0], ceiling_atom=True, upper_bound=10.0, boundary_epsilon=0.5
         )
@@ -459,7 +483,8 @@ class TestBuildGrid:
         """Test that ceiling_atom=False produces no epsilon-offset point,
         even with data concentrated at the ceiling. Uses an absolute
         (non-relative) tolerance to avoid np.isclose's default rtol
-        coincidentally matching the epsilon magnitude being tested for."""
+        coincidentally matching the epsilon magnitude being tested for.
+        """
         mapper = DummyBinMapper(bin_edges=[10.0], ceiling_atom=False)
         y_cont = np.array([2.0, 10.0, 10.0, 10.0])
         mapper._build_grid(y_cont)
@@ -470,7 +495,8 @@ class TestBuildGrid:
     def test_y_binned_inconsistent_with_value_raises(self) -> None:
         """Test that forcing a sample into a bin whose own resolved edges
         cannot contain its value raises ValueError rather than silently
-        producing a non-monotonic grid."""
+        producing a non-monotonic grid.
+        """
         mapper = DummyBinMapper(bin_edges=[10.0, 20.0])
         y_cont = np.array([15.0])
         with pytest.raises(ValueError, match="negative-width range"):
@@ -479,7 +505,8 @@ class TestBuildGrid:
     def test_zero_width_bin_does_not_raise(self) -> None:
         """Test that low == high (a genuinely degenerate, not inverted, bin)
         is permitted and resolves via max-weight dedup, distinguishing this
-        from the strictly-invalid low > high case."""
+        from the strictly-invalid low > high case.
+        """
         mapper = DummyBinMapper(bin_edges=[10.0], lower_bound=10.0, upper_bound=10.0)
         mapper._build_grid(np.array([10.0, 10.0]))
         idx = np.searchsorted(mapper.grid_y_, 10.0)
@@ -507,7 +534,8 @@ class TestFit:
     def test_validates_params_before_building_grid(self) -> None:
         """Test that fit calls _validate_intra_bin_params before _build_grid,
         so subclass parameters set during validation are available to
-        _intra_bin_points during grid construction."""
+        _intra_bin_points during grid construction.
+        """
         mapper = ParamDependentBinMapper(bin_edges=[10.0])
         mapper.fit(np.array([1.0, 5.0]))  # raises AttributeError if mis-ordered
         assert mapper.midpoint_frac_ == 0.5
@@ -538,7 +566,8 @@ class TestToContinuousDist:
 
     def test_returns_continuous_predictive_distribution(self) -> None:
         """Test that the return type and shape match the fitted grid and
-        sample count."""
+        sample count.
+        """
         mapper = DummyBinMapper(bin_edges=[10.0])
         mapper.fit(np.array([1.0, 5.0, 15.0]))
         pmf = np.array([[0.6, 0.4], [0.2, 0.8]])
@@ -561,14 +590,16 @@ class TestTransform:
 
     def test_not_fitted_raises(self) -> None:
         """Test that calling before fit raises NotFittedError (propagated
-        from to_continuous_dist)."""
+        from to_continuous_dist).
+        """
         mapper = DummyBinMapper(bin_edges=[10.0])
         with pytest.raises(NotFittedError):
             mapper.transform([[0.5, 0.5]])
 
     def test_matches_mean_of_continuous_dist(self) -> None:
         """Test that transform's default behaviour equals
-        to_continuous_dist(pmf).mean()."""
+        to_continuous_dist(pmf).mean().
+        """
         mapper = DummyBinMapper(bin_edges=[10.0])
         mapper.fit(np.array([1.0, 5.0, 15.0]))
         pmf = np.array([[0.6, 0.4], [0.2, 0.8]])
@@ -592,7 +623,8 @@ class TestSklearnCloneCompatibility:
 
     def test_clone_preserves_constructor_params(self) -> None:
         """Test that clone() reproduces an unfitted mapper with identical
-        constructor parameters."""
+        constructor parameters.
+        """
         mapper = MidpointBinMapper(
             bin_edges=[10.0, 20.0], lower_bound=0.0, upper_bound=30.0
         )
@@ -602,7 +634,8 @@ class TestSklearnCloneCompatibility:
 
     def test_clone_does_not_carry_over_fitted_state(self) -> None:
         """Test that clone() produces a fresh, unfitted instance, even
-        when cloning an already-fitted mapper."""
+        when cloning an already-fitted mapper.
+        """
         mapper = MidpointBinMapper(bin_edges=[10.0])
         mapper.fit(np.array([1.0, 15.0]))
         cloned = clone(mapper)
