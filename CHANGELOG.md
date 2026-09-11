@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to Semantic Versioning ([SemVer](https://semver.org/spec/v2.0.0.html)).
 
+## [0.3.1]  2026-09-12
+
+### Added
+* Improved test coverage for the mappers.
+* Improved test coverage for the distributions.
+* Improved test coverage for the models.
+* Improved test coverage for the metrics.
+* Enforcing `ruff` by adding to the list of dev dependencies.
+
+### Fixed
+* Bug in the bin generation with the quantile strategy that produces 2 extra bins.
+* Tests for the bin generation process.
+* Bug in the `pit_ks_test` function that failed silently.
+* Formatting and linting bugs in the code.
+
+
 ## [0.3.0] 2026-09-10
 
 ### Added
@@ -25,7 +41,6 @@ contains the code for interval evaluation example.
 * Update the `quickstart_classification.py` example.
 * Update the `quickstart_regression.py` example.
 * Development status in the `pyproject.toml`.
-
 
 ### Fixed
 * Removed `\n` from final print in quickstart_regression example.
@@ -131,7 +146,8 @@ contains the code for interval evaluation example.
 * Unit tests
 * Github workflow to run tests on push and pull request
 
-[Unreleased]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.3.0.dev0...v0.3.0
 [0.3.0.dev0]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v.0.2.1...v0.3.0.dev0
 [0.2.1]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.2.0...v.0.2.1
