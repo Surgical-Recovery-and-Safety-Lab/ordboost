@@ -2,8 +2,55 @@
 
 import numpy as np
 import pytest
+from sklearn.base import clone
 
 from ordboost.mappers import QuantileBinMapper
+
+
+class TestInit:
+    """Tests for QuantileBinMapper.__init__ parameter storage and threading."""
+
+    def test_default_parameters(self) -> None:
+        """Test that quantiles defaults to (0.25, 0.5, 0.75) and that
+        base-class parameters retain BaseBinMapper's own defaults."""
+        mapper = QuantileBinMapper()
+        assert mapper.quantiles == (0.25, 0.50, 0.75)
+        assert mapper.bin_edges is None
+        assert mapper.lower_bound is None
+        assert mapper.upper_bound is None
+        assert mapper.floor_atom is False
+        assert mapper.ceiling_atom is False
+        assert mapper.boundary_epsilon == 1e-4
+
+    def test_base_parameters_threaded_through_super(self) -> None:
+        """Test that base-class parameters are correctly passed to
+        BaseBinMapper.__init__ rather than silently dropped."""
+        mapper = QuantileBinMapper(
+            bin_edges=[0.0, 10.0],
+            quantiles=(0.1, 0.9),
+            lower_bound=None,
+            ceiling_atom=True,
+            upper_bound=10.0,
+            boundary_epsilon=0.01,
+        )
+        assert mapper.bin_edges == [0.0, 10.0]
+        assert mapper.quantiles == (0.1, 0.9)
+        assert mapper.lower_bound is None
+        assert mapper.upper_bound == 10.0
+        assert mapper.ceiling_atom is True
+        assert mapper.boundary_epsilon == 0.01
+
+
+class TestSklearnCloneCompatibility:
+    """Tests that QuantileBinMapper satisfies sklearn's clone contract."""
+
+    def test_clone_preserves_quantiles(self) -> None:
+        """Test that clone() reproduces the same quantiles parameter,
+        confirming it is threaded correctly for get_params/set_params."""
+        mapper = QuantileBinMapper(bin_edges=[10.0, 20.0], quantiles=(0.1, 0.5, 0.9))
+        cloned = clone(mapper)
+        assert cloned.get_params() == mapper.get_params()
+        assert cloned.quantiles == (0.1, 0.5, 0.9)
 
 
 class TestValidateIntraBinParams:

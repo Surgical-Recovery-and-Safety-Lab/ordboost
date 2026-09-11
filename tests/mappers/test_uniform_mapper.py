@@ -2,6 +2,7 @@
 
 import numpy as np
 import pytest
+from sklearn.base import clone
 
 from ordboost.mappers import UniformBinMapper
 
@@ -31,6 +32,17 @@ class TestInit:
         assert mapper.upper_bound is 10.0
         assert mapper.ceiling_atom is True
         assert mapper.boundary_epsilon == 0.01
+
+
+class TestSklearnCloneCompatibility:
+    """Tests that UniformBinMapper satisfies sklearn's clone contract."""
+
+    def test_clone_preserves_n_points(self) -> None:
+        """Test that clone() reproduces the same n_points parameter."""
+        mapper = UniformBinMapper(bin_edges=[10.0, 20.0], n_points=3)
+        cloned = clone(mapper)
+        assert cloned.get_params() == mapper.get_params()
+        assert cloned.n_points == 3
 
 
 class TestValidateIntraBinParams:

@@ -2,8 +2,23 @@
 
 import numpy as np
 import pytest
+from sklearn.base import clone
 
 from ordboost.mappers import EmpiricalMedianBinMapper
+
+
+class TestSklearnCloneCompatibility:
+    """Tests that EmpiricalMedianBinMapper satisfies sklearn's clone contract."""
+
+    def test_clone_preserves_params(self) -> None:
+        """Test that clone() reproduces identical constructor parameters,
+        confirming this class (which does not override __init__) still
+        satisfies get_params/set_params."""
+        mapper = EmpiricalMedianBinMapper(
+            bin_edges=[10.0, 20.0], ceiling_atom=True, upper_bound=20.0
+        )
+        cloned = clone(mapper)
+        assert cloned.get_params() == mapper.get_params()
 
 
 class TestIntraBinPoints:

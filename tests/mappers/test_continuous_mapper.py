@@ -2,8 +2,57 @@
 
 import numpy as np
 import pytest
+from sklearn.base import clone
 
 from ordboost.mappers import ContinuousBinMapper
+
+
+class TestInit:
+    """Tests for ContinuousBinMapper.__init__ parameter storage and threading."""
+
+    def test_default_parameters(self) -> None:
+        """Test that resolution, density_weighted, and max_grid_points
+        default as documented."""
+        mapper = ContinuousBinMapper()
+        assert mapper.resolution == 1.0
+        assert mapper.density_weighted is True
+        assert mapper.max_grid_points == 1_000_000
+
+    def test_base_parameters_threaded_through_super(self) -> None:
+        """Test that base-class parameters are correctly passed to
+        BaseBinMapper.__init__ rather than silently dropped."""
+        mapper = ContinuousBinMapper(
+            bin_edges=[0.0, 10.0],
+            resolution=2.0,
+            density_weighted=False,
+            max_grid_points=500,
+            lower_bound=None,
+            ceiling_atom=True,
+            upper_bound=10.0,
+            boundary_epsilon=0.01,
+        )
+        assert mapper.bin_edges == [0.0, 10.0]
+        assert mapper.resolution == 2.0
+        assert mapper.density_weighted is False
+        assert mapper.max_grid_points == 500
+        assert mapper.lower_bound is None
+        assert mapper.upper_bound == 10.0
+        assert mapper.ceiling_atom is True
+        assert mapper.boundary_epsilon == 0.01
+
+
+class TestSklearnCloneCompatibility:
+    """Tests that ContinuousBinMapper satisfies sklearn's clone contract."""
+
+    def test_clone_preserves_params(self) -> None:
+        """Test that clone() reproduces the same resolution/density_weighted
+        parameters, confirming they are threaded correctly for
+        get_params/set_params."""
+        mapper = ContinuousBinMapper(
+            bin_edges=[10.0, 20.0], resolution=2.0, density_weighted=False
+        )
+        cloned = clone(mapper)
+        assert cloned.get_params() == mapper.get_params()
 
 
 class TestValidateIntraBinParams:
@@ -165,6 +214,16 @@ class TestFitIntegration:
         )
         with pytest.raises(ValueError, match="max_grid_points"):
             mapper.fit(np.array([1.0, 50.0]))
+
+    def test_refit_resets_point_counter(self) -> None:
+        """Test that calling fit() a second time resets the running
+        max_grid_points counter (via _validate_intra_bin_params), rather
+        than accumulating the point count across separate fits."""
+        mapper = ContinuousBinMapper(
+            bin_edges=[0.0, 10.0], resolution=1.0, max_grid_points=20
+        )
+        mapper.fit(np.array([1.0, 9.0]))  # ~9 interior points, under the limit
+        mapper.fit(np.array([1.0, 9.0]))  # would fail if points leaked across fits
 
 
 class TestTransformIntegration:

@@ -2,6 +2,7 @@
 
 import numpy as np
 import pytest
+from sklearn.base import clone
 from sklearn.exceptions import NotFittedError
 
 from ordboost.distributions import ContinuousPredictiveDistribution
@@ -60,6 +61,11 @@ class TestBaseBinMapperInit:
         assert mapper.upper_bound is None
         assert mapper.floor_atom is False
         assert mapper.ceiling_atom is False
+
+    def test_default_boundary_epsilon(self) -> None:
+        """Test that boundary_epsilon defaults to 1e-4."""
+        mapper = DummyBinMapper()
+        assert mapper.boundary_epsilon == 1e-4
 
     def test_custom_parameters(self) -> None:
         """Test that custom constructor arguments are stored unmodified."""
@@ -302,6 +308,67 @@ class TestBuildGrid:
         mapper._build_grid(y_cont)
         assert mapper.grid_y_[-1] == pytest.approx(20.0)
 
+    def test_first_bin_empty_falls_back_to_edge_when_unbounded(self) -> None:
+        """Test that with lower_bound=None and an empty first bin, the
+        floor falls back to the first threshold edge (a degenerate
+        zero-width bin), mirroring the equivalent ceiling-side fallback
+        tested in test_empty_terminal_bin_falls_back_to_edge_when_unbounded."""
+        mapper = DummyBinMapper(bin_edges=[10.0, 20.0], lower_bound=None)
+        y_cont = np.array([15.0, 25.0])  # nothing in the first bin (-inf, 10)
+        mapper._build_grid(y_cont)
+        assert mapper.grid_y_[1] == pytest.approx(10.0)
+
+    def test_floor_atom_with_empty_first_bin_assigns_full_weight(self) -> None:
+        """Test that floor_atom=True with no data in the first bin assigns
+        weight 1.0 at the floor anchor point, via _boundary_atom_weight's
+        empty-bin fallback -- distinct from the floor_atom_false case
+        (weight 0) and the populated-bin case (an empirical fraction)."""
+        mapper = DummyBinMapper(bin_edges=[10.0], floor_atom=True, lower_bound=0.0)
+        y_cont = np.array([15.0])  # nothing in bin 0
+        mapper._build_grid(y_cont)
+        floor_idx = np.searchsorted(mapper.grid_y_, 0.0)
+        assert mapper.grid_cdf_weights_[floor_idx] == pytest.approx(1.0)
+
+    def test_ceiling_atom_true_but_last_bin_empty_adds_no_extra_point(self) -> None:
+        """Test that ceiling_atom=True adds no epsilon-offset atom point
+        when the final bin has no data, since there is no empirical
+        fraction to compute -- distinct from ceiling_atom=False, which
+        also adds no point but for an unrelated reason. Uses an absolute
+        (non-relative) tolerance, as np.isclose's default rtol would
+        otherwise coincidentally match the epsilon magnitude being tested
+        for (as in test_ceiling_atom_false_adds_no_extra_point)."""
+        mapper = DummyBinMapper(bin_edges=[5.0], ceiling_atom=True, upper_bound=10.0)
+        y_cont = np.array([2.0])  # nothing in the final bin [5, 10)
+        mapper._build_grid(y_cont)
+        assert not np.any(
+            np.abs(mapper.grid_y_ - (10.0 - mapper.boundary_epsilon)) < 1e-9
+        )
+        assert mapper.grid_y_[-1] == pytest.approx(10.0)
+        assert mapper.grid_cdf_weights_[-1] == pytest.approx(2.0)
+
+    def test_explicit_y_binned_overrides_natural_digitization(self) -> None:
+        """Test that a supplied y_binned array controls bin assignment
+        even when it disagrees with what np.digitize would compute for
+        the same edges, confirming _build_grid actually uses the supplied
+        labels rather than silently re-deriving bins from y_continuous."""
+        received = {}
+
+        class RecordingBinMapper(BaseBinMapper):
+            """Dummy mapper that records the bin_data it receives per bin,
+            to confirm which samples were routed to which bin."""
+
+            def _intra_bin_points(self, bin_data, low, high, k):
+                received[k] = bin_data.copy()
+                return np.array([]), np.array([])
+
+        mapper = RecordingBinMapper(
+            bin_edges=[10.0, 20.0], lower_bound=0.0, upper_bound=25.0
+        )
+        y_cont = np.array([10.0])  # np.digitize would place this in bin 1
+        mapper._build_grid(y_cont, y_binned=np.array([0]))  # force into bin 0
+        np.testing.assert_array_equal(received[0], np.array([10.0]))
+        assert received[1].size == 0
+
     def test_floor_atom_assigns_empirical_weight(self) -> None:
         """Test that floor_atom=True assigns the empirical at-or-below
         fraction as the floor point's cumulative weight, rather than 0.
@@ -514,3 +581,29 @@ class TestTransform:
         mapper.fit(np.array([1.0, 5.0, 15.0]))
         pmf = np.array([[0.6, 0.4], [0.2, 0.8], [0.5, 0.5]])
         assert mapper.transform(pmf).shape == (3,)
+
+
+class TestSklearnCloneCompatibility:
+    """Tests that BaseBinMapper subclasses satisfy sklearn's clone
+    contract (constructor params round-trip via get_params/set_params),
+    since OrdBoostRegressor/Classifier clone the fitted mapper internally
+    (see ordboost.models).
+    """
+
+    def test_clone_preserves_constructor_params(self) -> None:
+        """Test that clone() reproduces an unfitted mapper with identical
+        constructor parameters."""
+        mapper = MidpointBinMapper(
+            bin_edges=[10.0, 20.0], lower_bound=0.0, upper_bound=30.0
+        )
+        cloned = clone(mapper)
+        assert cloned is not mapper
+        assert cloned.get_params() == mapper.get_params()
+
+    def test_clone_does_not_carry_over_fitted_state(self) -> None:
+        """Test that clone() produces a fresh, unfitted instance, even
+        when cloning an already-fitted mapper."""
+        mapper = MidpointBinMapper(bin_edges=[10.0])
+        mapper.fit(np.array([1.0, 15.0]))
+        cloned = clone(mapper)
+        assert not hasattr(cloned, "grid_y_")
