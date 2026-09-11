@@ -37,7 +37,8 @@ class TestBaselineDistribution:
 
     def test_all_rows_identical(self) -> None:
         """Test that every row of the broadcast grid_cdf is identical,
-        representing the same unconditional forecast for every sample."""
+        representing the same unconditional forecast for every sample.
+        """
         y_train = np.array([1.0, 2.0, 5.0, 10.0])
         dist = baseline_distribution(y_train, n_samples=5)
         for i in range(1, 5):
@@ -51,7 +52,8 @@ class TestBaselineDistribution:
 
     def test_grid_y_is_sorted_unique_values(self) -> None:
         """Test that grid_y contains sorted unique values of y_train, with
-        duplicates collapsed to a single grid point."""
+        duplicates collapsed to a single grid point.
+        """
         y_train = np.array([5.0, 1.0, 3.0, 1.0, 5.0])
         dist = baseline_distribution(y_train, n_samples=1)
         np.testing.assert_array_equal(dist.grid_y[1:], [1.0, 3.0, 5.0])
@@ -80,21 +82,24 @@ class TestBaselineDistribution:
         """Test that grid_cdf's first column is exactly 0.0, using a fixture
         where the naive empirical CDF at the observed minimum would NOT be
         zero -- this is the direct regression test for the missing floor
-        anchor point."""
+        anchor point.
+        """
         y_train = np.array([1.0, 1.0, 2.0, 3.0, 3.0, 3.0])
         dist = baseline_distribution(y_train, n_samples=1)
         assert dist.grid_cdf[0, 0] == 0.0
 
     def test_grid_y_starts_below_observed_minimum(self) -> None:
         """Test that grid_y's first value is strictly below y_train's min,
-        by the configured boundary_epsilon."""
+        by the configured boundary_epsilon.
+        """
         y_train = np.array([1.0, 2.0, 3.0])
         dist = baseline_distribution(y_train, n_samples=1, boundary_epsilon=0.01)
         assert dist.grid_y[0] == pytest.approx(1.0 - 0.01)
 
     def test_grid_cdf_matches_empirical_cdf(self) -> None:
         """Test that grid_cdf values at each unique training value match the
-        hand-computed empirical CDF, appearing after the forced floor anchor."""
+        hand-computed empirical CDF, appearing after the forced floor anchor.
+        """
         y_train = np.array([1.0, 1.0, 2.0, 3.0, 3.0, 3.0])
         dist = baseline_distribution(y_train, n_samples=1)
         # grid_y: [1-eps, 1, 2, 3]; grid_cdf: [0.0, 1/3, 0.5, 1.0]
@@ -104,14 +109,16 @@ class TestBaselineDistribution:
     def test_last_grid_point_reaches_one_without_adjustment(self) -> None:
         """Test that the final grid_cdf value is exactly 1.0, confirming the
         ceiling needs no equivalent anchor fix -- P(Y <= max(y_train)) = 1.0
-        always, by construction."""
+        always, by construction.
+        """
         y_train = np.array([2.0, 5.0, 9.0])
         dist = baseline_distribution(y_train, n_samples=1)
         assert dist.grid_cdf[0, -1] == 1.0
 
     def test_single_unique_value_y_train(self) -> None:
         """Test the degenerate case where y_train has a single repeated
-        value: grid_y has the floor anchor plus one point, CDF [0.0, 1.0]."""
+        value: grid_y has the floor anchor plus one point, CDF [0.0, 1.0].
+        """
         y_train = np.array([7.0, 7.0, 7.0])
         dist = baseline_distribution(y_train, n_samples=2)
         np.testing.assert_allclose(dist.grid_y, [7.0 - 1e-4, 7.0])
@@ -125,7 +132,7 @@ class TestCRPSScore:
     def perfect_discrete_dist(
         self,
     ) -> tuple[np.ndarray, DiscretePredictiveDistribution]:
-        """Fixture providing a deterministic discrete distribution with perfect predictions."""
+        """Fixture: a deterministic discrete distribution with perfect predictions."""
         classes = np.array([0, 10, 20])
         pmf = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
         y_true = np.array([0, 10, 20])
@@ -182,7 +189,7 @@ class TestCRPSScore:
             = 5*(0.2^2 + 0.2*0.5 + 0.5^2)/3 = 0.65
           segment [5,10]: F 0.5->0.8, integrand (F(y)-1)^2
             = 5*(0.5^2 + 0.5*0.2 + 0.2^2)/3 (via a'=-0.5, b'=-0.2) = 0.65
-          total = 1.3
+          total = 1.3.
 
         This is the exact regression test for the original trapezoidal
         bug: the old (removed) implementation returned 0.4 for this same
@@ -228,7 +235,8 @@ class TestCRPSScore:
 
     def test_crps_continuous_perfect_step_forecast_near_zero(self) -> None:
         """Test that a forecast whose CDF is already (approximately) the
-        true step function at y_true yields a CRPS close to zero."""
+        true step function at y_true yields a CRPS close to zero.
+        """
         grid_y = np.array([0.0, 10.0])
         grid_cdf = np.array([[1.0, 1.0]])  # CDF already at 1.0 everywhere
         y_true = np.array([0.0])  # true value at the very start of the grid
@@ -243,7 +251,8 @@ class TestCRPSScore:
         """Test weighted continuous CRPS, reusing the exact single-sample
         value from test_crps_continuous_exact_kink_value alongside a
         second sample, to confirm weighting is applied on top of the
-        corrected per-sample values rather than the old ones."""
+        corrected per-sample values rather than the old ones.
+        """
         grid_y = np.array([0.0, 10.0])
         grid_cdf = np.array([[0.2, 0.8], [0.2, 0.8]])
         y_true = np.array([5.0, 5.0])  # both samples: exact CRPS = 1.3 each
@@ -267,7 +276,8 @@ class TestCRPSScore:
 
     def test_crps_sample_count_mismatch_continuous(self) -> None:
         """Test error when sample count in y_true mismatches a continuous
-        y_dist's grid_cdf row count."""
+        y_dist's grid_cdf row count.
+        """
         dist = MagicMock(spec=ContinuousPredictiveDistribution)
         dist.grid_y = np.array([0.0, 10.0])
         dist.grid_cdf = np.array([[0.2, 0.8]])
@@ -276,7 +286,8 @@ class TestCRPSScore:
 
     def test_crps_sample_count_mismatch_discrete(self) -> None:
         """Test error when sample count in y_true mismatches a discrete
-        y_dist's pmf row count."""
+        y_dist's pmf row count.
+        """
         classes = np.array([0, 1])
         pmf = np.array([[0.5, 0.5]])
         dist = DiscretePredictiveDistribution(pmf=pmf, classes=classes)
@@ -285,7 +296,8 @@ class TestCRPSScore:
 
     def test_crps_invalid_sample_weight_shape(self) -> None:
         """Test error when sample_weight shape mismatches y_true, for the
-        continuous branch."""
+        continuous branch.
+        """
         dist = MagicMock(spec=ContinuousPredictiveDistribution)
         dist.grid_y = np.array([0.0, 10.0])
         dist.grid_cdf = np.array([[0.2, 0.8]])
@@ -298,7 +310,8 @@ class TestCRPSSkillScore:
 
     def test_formula_matches_hand_computation(self) -> None:
         """Test that the skill score equals 1 - crps_model/crps_baseline
-        for known mocked CRPS values."""
+        for known mocked CRPS values.
+        """
         dist_model = MagicMock(spec=ContinuousPredictiveDistribution)
         dist_baseline = MagicMock(spec=ContinuousPredictiveDistribution)
 
@@ -310,7 +323,8 @@ class TestCRPSSkillScore:
 
     def test_perfect_model_gives_skill_score_of_one(self) -> None:
         """Test that a model CRPS of 0.0 yields a skill score of 1.0
-        (perfect forecast), regardless of the baseline's CRPS."""
+        (perfect forecast), regardless of the baseline's CRPS.
+        """
         dist_model = MagicMock(spec=ContinuousPredictiveDistribution)
         dist_baseline = MagicMock(spec=ContinuousPredictiveDistribution)
 
@@ -321,7 +335,8 @@ class TestCRPSSkillScore:
 
     def test_model_equal_to_baseline_gives_skill_score_of_zero(self) -> None:
         """Test that identical model and baseline CRPS values give a
-        skill score of exactly 0.0."""
+        skill score of exactly 0.0.
+        """
         dist_model = MagicMock(spec=ContinuousPredictiveDistribution)
         dist_baseline = MagicMock(spec=ContinuousPredictiveDistribution)
 
@@ -332,7 +347,8 @@ class TestCRPSSkillScore:
 
     def test_model_worse_than_baseline_gives_negative_score(self) -> None:
         """Test that a model CRPS worse than the baseline's yields a
-        negative skill score."""
+        negative skill score.
+        """
         dist_model = MagicMock(spec=ContinuousPredictiveDistribution)
         dist_baseline = MagicMock(spec=ContinuousPredictiveDistribution)
 
@@ -344,7 +360,8 @@ class TestCRPSSkillScore:
 
     def test_sample_weight_forwarded_to_both_crps_calls(self) -> None:
         """Test that sample_weight is passed through identically to both
-        the model and baseline CRPS computations."""
+        the model and baseline CRPS computations.
+        """
         dist_model = MagicMock(spec=ContinuousPredictiveDistribution)
         dist_baseline = MagicMock(spec=ContinuousPredictiveDistribution)
         weights = [1.0, 2.0]
@@ -360,7 +377,8 @@ class TestCRPSSkillScore:
     def test_integration_with_real_crps_score(self) -> None:
         """Test end-to-end against real (unmocked) crps_score and
         baseline_distribution, confirming the pieces compose correctly
-        rather than only working with mocks."""
+        rather than only working with mocks.
+        """
         y_train = np.array([0.0, 5.0, 10.0])
         y_true = np.array([5.0])
         grid_y = np.array([0.0, 10.0])
@@ -437,7 +455,8 @@ class TestPinballLossSkillScore:
 
     def test_model_equal_to_baseline_gives_skill_score_of_zero(self) -> None:
         """Test that identical model and baseline predictions give a
-        skill score of exactly 0.0."""
+        skill score of exactly 0.0.
+        """
         dist_model = MagicMock(spec=ContinuousPredictiveDistribution)
         dist_model.ppf.return_value = np.array([8.0])
         dist_baseline = MagicMock(spec=ContinuousPredictiveDistribution)
@@ -462,7 +481,8 @@ class TestPinballLossSkillScore:
 
     def test_queries_both_distributions_at_same_quantile(self) -> None:
         """Test that both dist_model.ppf and dist_baseline.ppf are called
-        with the same quantile level q."""
+        with the same quantile level q.
+        """
         dist_model = MagicMock(spec=ContinuousPredictiveDistribution)
         dist_model.ppf.return_value = np.array([5.0])
         dist_baseline = MagicMock(spec=ContinuousPredictiveDistribution)
@@ -476,7 +496,8 @@ class TestPinballLossSkillScore:
     def test_sample_weight_affects_result(self) -> None:
         """Test that sample_weight is genuinely forwarded (not silently
         dropped), by confirming weighted and unweighted results differ
-        for asymmetric per-sample losses."""
+        for asymmetric per-sample losses.
+        """
         dist_model = MagicMock(spec=ContinuousPredictiveDistribution)
         dist_model.ppf.return_value = np.array([0.0, 0.0])
         dist_baseline = MagicMock(spec=ContinuousPredictiveDistribution)
@@ -498,7 +519,8 @@ class TestPinballLossSkillScore:
         """Test that a quantile level outside (0.0, 1.0) raises ValueError,
         propagated from dist_model.ppf's own quantile validation (using a
         real distribution, since a MagicMock would not perform this
-        validation itself)."""
+        validation itself).
+        """
         grid_y = np.array([0.0, 10.0])
         grid_cdf = np.array([[0.0, 1.0]])
         dist_model = ContinuousPredictiveDistribution(grid_y=grid_y, grid_cdf=grid_cdf)
@@ -511,7 +533,8 @@ class TestPinballLossSkillScore:
 
     def test_integration_with_real_distributions(self) -> None:
         """Test end-to-end against real (unmocked) distributions,
-        confirming ppf and pinball_loss compose correctly."""
+        confirming ppf and pinball_loss compose correctly.
+        """
         grid_y = np.array([0.0, 10.0])
         dist_model = ContinuousPredictiveDistribution(
             grid_y=grid_y, grid_cdf=np.array([[0.0, 1.0]])
@@ -554,7 +577,8 @@ class TestMarginalCalibrationCurve:
 
     def test_perfectly_matched_calibration_is_zero(self) -> None:
         """Test that when the empirical CDF exactly matches the mean
-        predicted CDF at every grid point, calibration is exactly zero."""
+        predicted CDF at every grid point, calibration is exactly zero.
+        """
         grid_y = np.array([0.0, 10.0])
         grid_cdf = np.array([[0.0, 1.0], [0.0, 1.0]])  # mean_cdf = [0.0, 1.0]
         dist = ContinuousPredictiveDistribution(grid_y=grid_y, grid_cdf=grid_cdf)
@@ -567,7 +591,8 @@ class TestMarginalCalibrationCurve:
     def test_negative_calibration_indicates_overprediction(self) -> None:
         """Test that a predicted CDF running ahead of the empirical CDF
         yields negative calibration, per the documented sign convention
-        (empirical_cdf - mean_cdf)."""
+        (empirical_cdf - mean_cdf).
+        """
         grid_y = np.array([0.0, 5.0, 10.0])
         grid_cdf = np.array([[0.0, 0.9, 1.0]])  # model claims 90% mass by y=5
         dist = ContinuousPredictiveDistribution(grid_y=grid_y, grid_cdf=grid_cdf)
@@ -589,7 +614,8 @@ class TestMarginalCalibrationCurve:
 
     def test_averaging_across_multiple_samples(self) -> None:
         """Test that mean_cdf is genuinely the average across all sample
-        rows, not just the first row."""
+        rows, not just the first row.
+        """
         grid_y = np.array([0.0, 5.0, 10.0])
         grid_cdf = np.array(
             [[0.0, 0.5, 1.0], [0.0, 0.5, 1.0], [0.0, 0.75, 1.0], [0.0, 0.5, 1.0]]
@@ -603,7 +629,8 @@ class TestMarginalCalibrationCurve:
 
     def test_single_sample(self) -> None:
         """Test that the function works correctly for a single-sample
-        distribution (mean over one row is that row itself)."""
+        distribution (mean over one row is that row itself).
+        """
         grid_y = np.array([0.0, 5.0, 10.0])
         grid_cdf = np.array([[0.0, 0.6, 1.0]])
         dist = ContinuousPredictiveDistribution(grid_y=grid_y, grid_cdf=grid_cdf)
@@ -660,6 +687,19 @@ class TestIntervalCoverageRate:
         dist = MagicMock(spec=ContinuousPredictiveDistribution)
         with pytest.raises(ValueError, match="must lie within"):
             interval_coverage_rate([5.0], dist, alpha=-0.5)
+
+    def test_value_exactly_at_bounds_counts_as_covered(self) -> None:
+        """Test that y_true values landing exactly on the lower or upper
+        bound count as covered, per the inclusive (>=, <=) comparisons in
+        the source -- not obvious from known_values alone, since none of
+        those samples sit exactly at a boundary.
+        """
+        dist = MagicMock(spec=ContinuousPredictiveDistribution)
+        dist.interval.return_value = (np.array([2.0, 5.0]), np.array([8.0, 15.0]))
+        y_true = np.array([2.0, 15.0])  # exactly at sample 0's lower, sample 1's upper
+
+        coverage = interval_coverage_rate(y_true, dist, alpha=0.10)
+        assert coverage == pytest.approx(1.0)
 
 
 class TestSharpness:
@@ -728,7 +768,8 @@ class TestSharpness:
 
     def test_alpha_validated_before_interval_is_called(self) -> None:
         """Test that an invalid alpha raises before dist.interval is ever
-        invoked, confirming validation happens up front."""
+        invoked, confirming validation happens up front.
+        """
         dist = MagicMock(spec=ContinuousPredictiveDistribution)
         with pytest.raises(ValueError, match="must lie within"):
             sharpness(dist, alpha=0.0)
@@ -738,7 +779,8 @@ class TestSharpness:
         """Test a realistic end-to-end case (real distribution, not
         mocked) confirming a larger alpha (narrower central interval)
         produces smaller sharpness, as a basic sanity check of the
-        interval-width relationship rather than an isolated unit check."""
+        interval-width relationship rather than an isolated unit check.
+        """
         grid_y = np.array([0.0, 10.0, 20.0, 30.0, 40.0])
         grid_cdf = np.array([[0.0, 0.2, 0.5, 0.8, 1.0]])
         dist = ContinuousPredictiveDistribution(grid_y=grid_y, grid_cdf=grid_cdf)
@@ -762,8 +804,10 @@ class TestWinklerScore:
         alpha = 0.10  # multiplier 2/alpha = 20.0
 
         # Sample 0 (inside): width = 6.0, penalty = 0 -> score = 6.0
-        # Sample 1 (under):  width = 10.0, under penalty = 20.0*(5-3) = 40.0 -> score = 50.0
-        # Sample 2 (over):   width = 10.0, over penalty  = 20.0*(25-20) = 100.0 -> score = 110.0
+        # Sample 1 (under):  width = 10.0,
+        #   under penalty = 20.0*(5-3) = 40.0 -> score = 50.0
+        # Sample 2 (over):   width = 10.0,
+        #   over penalty = 20.0*(25-20) = 100.0 -> score = 110.0
         # Mean score = (6.0 + 50.0 + 110.0) / 3 = 166.0 / 3
         score = winkler_score(y_true, dist, alpha=alpha)
         assert score == pytest.approx(166.0 / 3.0, abs=1e-6)
@@ -801,126 +845,20 @@ class TestWinklerScore:
         with pytest.raises(ValueError, match="Expected 'sample_weight' shape"):
             winkler_score([5.0], dist, alpha=0.10, sample_weight=[1.0, 2.0])
 
-
-class TestPitDiagnostics:
-    """Tests for pit_diagnostics."""
-
-    @pytest.fixture
-    def sample_dist(self) -> ContinuousPredictiveDistribution:
-        """Fixture providing a 2-sample continuous distribution with a
-        floor anchor at index 0/1 and a near-ceiling atom point at the
-        second-to-last index, mimicking a mapper-built grid. grid_y[1]
-        is the floor atom value (0.0); grid_y[-1] is the ceiling atom
-        value (10.0).
+    def test_value_exactly_at_bounds_gets_no_penalty(self) -> None:
+        """Test that y_true values landing exactly on the lower or upper
+        bound incur zero under/over penalty (score == width), per the
+        strict (<, >) comparisons in the source -- the boundary itself
+        counts as 'inside', not obvious from known_values alone since
+        none of those samples sit exactly at a boundary.
         """
-        grid_y = np.array([-0.0001, 0.0, 5.0, 9.9999, 10.0])
-        grid_cdf = np.array(
-            [
-                [0.0, 0.3, 0.6, 0.85, 1.0],
-                [0.0, 0.1, 0.5, 0.90, 1.0],
-            ]
-        )
-        return ContinuousPredictiveDistribution(grid_y=grid_y, grid_cdf=grid_cdf)
+        dist = MagicMock(spec=ContinuousPredictiveDistribution)
+        dist.interval.return_value = (np.array([2.0, 5.0]), np.array([8.0, 15.0]))
+        y_true = np.array([2.0, 15.0])  # exactly at sample 0's lower, sample 1's upper
 
-    def test_shape_mismatch_raises(self, sample_dist) -> None:
-        """Test that a y_true length mismatch raises ValueError before
-        any PitFcstAtObs construction is attempted."""
-        mapper = MagicMock(spec=BaseBinMapper, floor_atom=False, ceiling_atom=False)
-        with pytest.raises(ValueError, match="Expected 'y_true' of shape"):
-            pit_diagnostics(np.array([1.0, 2.0, 3.0]), sample_dist, mapper)
-
-    @patch("ordboost.metrics.PitFcstAtObs")
-    def test_no_atoms_fcst_left_equals_fcst_right(
-        self, mock_pit_cls, sample_dist
-    ) -> None:
-        """Test that with both atom flags False, fcst_at_obs_left is
-        identical to fcst_at_obs everywhere (no discontinuity treatment
-        applied)."""
-        mapper = MagicMock(spec=BaseBinMapper, floor_atom=False, ceiling_atom=False)
-        pit_diagnostics(np.array([2.0, 8.0]), sample_dist, mapper, precision=None)
-
-        fcst_right = mock_pit_cls.call_args[0][0].values
-        fcst_left = mock_pit_cls.call_args[1]["fcst_at_obs_left"].values
-        np.testing.assert_array_equal(fcst_left, fcst_right)
-
-    @patch("ordboost.metrics.PitFcstAtObs")
-    def test_floor_atom_overwrites_only_matching_sample(
-        self, mock_pit_cls, sample_dist
-    ) -> None:
-        """Test that floor_atom=True forces fcst_at_obs_left to 0.0 only
-        for the sample whose y_true equals the floor value (grid_y[1]),
-        leaving other samples' fcst_at_obs_left equal to fcst_at_obs."""
-        mapper = MagicMock(spec=BaseBinMapper, floor_atom=True, ceiling_atom=False)
-        # sample 0 is exactly at the floor value (0.0); sample 1 is not
-        pit_diagnostics(np.array([0.0, 8.0]), sample_dist, mapper, precision=None)
-
-        fcst_right = mock_pit_cls.call_args[0][0].values
-        fcst_left = mock_pit_cls.call_args[1]["fcst_at_obs_left"].values
-
-        assert fcst_left[0] == 0.0
-        assert fcst_left[1] == pytest.approx(fcst_right[1])
-
-    @patch("ordboost.metrics.PitFcstAtObs")
-    def test_ceiling_atom_overwrites_only_matching_sample(
-        self, mock_pit_cls, sample_dist
-    ) -> None:
-        """Test that ceiling_atom=True sets fcst_at_obs_left, for the
-        sample whose y_true equals the ceiling value (grid_y[-1]), to
-        that sample's own near-ceiling grid_cdf value (column -2), while
-        other samples' fcst_at_obs_left is left equal to fcst_at_obs."""
-        mapper = MagicMock(spec=BaseBinMapper, floor_atom=False, ceiling_atom=True)
-        # sample 1 is exactly at the ceiling value (10.0); sample 0 is not
-        pit_diagnostics(np.array([2.0, 10.0]), sample_dist, mapper, precision=None)
-
-        fcst_right = mock_pit_cls.call_args[0][0].values
-        fcst_left = mock_pit_cls.call_args[1]["fcst_at_obs_left"].values
-
-        assert fcst_left[1] == pytest.approx(sample_dist.grid_cdf[1, -2])  # 0.90
-        assert fcst_left[0] == pytest.approx(fcst_right[0])
-
-    @patch("ordboost.metrics.PitFcstAtObs")
-    def test_both_atoms_applied_independently(self, mock_pit_cls, sample_dist) -> None:
-        """Test that floor_atom and ceiling_atom overwrite different
-        samples independently when both flags are True and different
-        samples sit at each boundary."""
-        mapper = MagicMock(spec=BaseBinMapper, floor_atom=True, ceiling_atom=True)
-        # sample 0 at the floor value, sample 1 at the ceiling value
-        pit_diagnostics(np.array([0.0, 10.0]), sample_dist, mapper, precision=None)
-
-        fcst_left = mock_pit_cls.call_args[1]["fcst_at_obs_left"].values
-
-        assert fcst_left[0] == 0.0
-        assert fcst_left[1] == pytest.approx(sample_dist.grid_cdf[1, -2])
-
-    @patch("ordboost.metrics.PitFcstAtObs")
-    def test_missing_atom_attributes_default_to_false(
-        self, mock_pit_cls, sample_dist
-    ) -> None:
-        """Test that an object without floor_atom/ceiling_atom attributes
-        is handled gracefully via getattr, defaulting to no atom
-        treatment rather than raising AttributeError."""
-        bare_object = object()
-        pit_diagnostics(np.array([0.0, 10.0]), sample_dist, bare_object, precision=None)
-
-        fcst_right = mock_pit_cls.call_args[0][0].values
-        fcst_left = mock_pit_cls.call_args[1]["fcst_at_obs_left"].values
-        np.testing.assert_array_equal(fcst_left, fcst_right)
-
-    @patch("ordboost.metrics.PitFcstAtObs")
-    def test_returns_pit_constructor_result(self, mock_pit_cls, sample_dist) -> None:
-        """Test that the function returns whatever PitFcstAtObs(...)
-        returns, confirming it's a thin pass-through, and that fcst_da is
-        passed positionally with fcst_at_obs_left as a keyword argument."""
-        mock_pit_cls.return_value = "sentinel_pit_object"
-        mapper = MagicMock(spec=BaseBinMapper, floor_atom=False, ceiling_atom=False)
-        result = pit_diagnostics(
-            np.array([2.0, 8.0]), sample_dist, mapper, precision=None
-        )
-
-        assert result == "sentinel_pit_object"
-        args, kwargs = mock_pit_cls.call_args
-        assert len(args) == 1
-        assert "fcst_at_obs_left" in kwargs
+        score = winkler_score(y_true, dist, alpha=0.10)
+        # widths: [6.0, 10.0], no penalties -> mean = 8.0
+        assert score == pytest.approx(8.0)
 
 
 class TestPitDiagnostics:
@@ -945,7 +883,8 @@ class TestPitDiagnostics:
 
     def test_shape_mismatch_raises(self, sample_dist) -> None:
         """Test that a y_true length mismatch raises ValueError before
-        any PitFcstAtObs construction is attempted."""
+        any PitFcstAtObs construction is attempted.
+        """
         mapper = MagicMock(spec=BaseBinMapper, floor_atom=False, ceiling_atom=False)
         with pytest.raises(ValueError, match="Expected 'y_true' of shape"):
             pit_diagnostics(np.array([1.0, 2.0, 3.0]), sample_dist, mapper)
@@ -956,7 +895,8 @@ class TestPitDiagnostics:
     ) -> None:
         """Test that with both atom flags False, fcst_at_obs_left is
         identical to fcst_at_obs everywhere (no discontinuity treatment
-        applied)."""
+        applied).
+        """
         mapper = MagicMock(spec=BaseBinMapper, floor_atom=False, ceiling_atom=False)
         pit_diagnostics(np.array([2.0, 8.0]), sample_dist, mapper, precision=None)
 
@@ -970,7 +910,8 @@ class TestPitDiagnostics:
     ) -> None:
         """Test that floor_atom=True forces fcst_at_obs_left to 0.0 only
         for the sample whose y_true equals the floor value (grid_y[1]),
-        leaving other samples' fcst_at_obs_left equal to fcst_at_obs."""
+        leaving other samples' fcst_at_obs_left equal to fcst_at_obs.
+        """
         mapper = MagicMock(spec=BaseBinMapper, floor_atom=True, ceiling_atom=False)
         # sample 0 is exactly at the floor value (0.0); sample 1 is not
         pit_diagnostics(np.array([0.0, 8.0]), sample_dist, mapper, precision=None)
@@ -988,7 +929,8 @@ class TestPitDiagnostics:
         """Test that ceiling_atom=True sets fcst_at_obs_left, for the
         sample whose y_true equals the ceiling value (grid_y[-1]), to
         that sample's own near-ceiling grid_cdf value (column -2), while
-        other samples' fcst_at_obs_left is left equal to fcst_at_obs."""
+        other samples' fcst_at_obs_left is left equal to fcst_at_obs.
+        """
         mapper = MagicMock(spec=BaseBinMapper, floor_atom=False, ceiling_atom=True)
         # sample 1 is exactly at the ceiling value (10.0); sample 0 is not
         pit_diagnostics(np.array([2.0, 10.0]), sample_dist, mapper, precision=None)
@@ -1003,7 +945,8 @@ class TestPitDiagnostics:
     def test_both_atoms_applied_independently(self, mock_pit_cls, sample_dist) -> None:
         """Test that floor_atom and ceiling_atom overwrite different
         samples independently when both flags are True and different
-        samples sit at each boundary."""
+        samples sit at each boundary.
+        """
         mapper = MagicMock(spec=BaseBinMapper, floor_atom=True, ceiling_atom=True)
         # sample 0 at the floor value, sample 1 at the ceiling value
         pit_diagnostics(np.array([0.0, 10.0]), sample_dist, mapper, precision=None)
@@ -1019,7 +962,8 @@ class TestPitDiagnostics:
     ) -> None:
         """Test that an object without floor_atom/ceiling_atom attributes
         is handled gracefully via getattr, defaulting to no atom
-        treatment rather than raising AttributeError."""
+        treatment rather than raising AttributeError.
+        """
         bare_object = object()
         pit_diagnostics(np.array([0.0, 10.0]), sample_dist, bare_object, precision=None)
 
@@ -1031,7 +975,8 @@ class TestPitDiagnostics:
     def test_returns_pit_constructor_result(self, mock_pit_cls, sample_dist) -> None:
         """Test that the function returns whatever PitFcstAtObs(...)
         returns, confirming it's a thin pass-through, and that fcst_da is
-        passed positionally with fcst_at_obs_left as a keyword argument."""
+        passed positionally with fcst_at_obs_left as a keyword argument.
+        """
         mock_pit_cls.return_value = "sentinel_pit_object"
         mapper = MagicMock(spec=BaseBinMapper, floor_atom=False, ceiling_atom=False)
         result = pit_diagnostics(
@@ -1049,7 +994,7 @@ class TestPitDiagnosticsPrecision:
 
     @pytest.fixture
     def sample_dist(self) -> ContinuousPredictiveDistribution:
-        """Same fixture as TestPitDiagnostics.sample_dist."""
+        """Provide the same fixture as TestPitDiagnostics.sample_dist."""
         grid_y = np.array([-0.0001, 0.0, 5.0, 9.9999, 10.0])
         grid_cdf = np.array(
             [
@@ -1064,7 +1009,8 @@ class TestPitDiagnosticsPrecision:
         self, mock_pit_cls, sample_dist
     ) -> None:
         """Test that the default precision=2 rounds fcst_at_obs to 2
-        decimal places."""
+        decimal places.
+        """
         mapper = MagicMock(spec=BaseBinMapper, floor_atom=False, ceiling_atom=False)
         pit_diagnostics(np.array([2.0, 8.0]), sample_dist, mapper)
 
@@ -1084,7 +1030,8 @@ class TestPitDiagnosticsPrecision:
 
     def test_bool_precision_raises_type_error(self, sample_dist) -> None:
         """Test that a bool precision raises TypeError (bool is a
-        subclass of int in Python and must be explicitly rejected)."""
+        subclass of int in Python and must be explicitly rejected).
+        """
         mapper = MagicMock(spec=BaseBinMapper, floor_atom=False, ceiling_atom=False)
         with pytest.raises(TypeError, match="Expected 'precision'"):
             pit_diagnostics(np.array([2.0, 8.0]), sample_dist, mapper, precision=True)
@@ -1108,148 +1055,138 @@ class TestPitDiagnosticsPrecision:
             pit_diagnostics(np.array([2.0, 8.0]), sample_dist, mapper, precision=-1)
 
     @patch("ordboost.metrics.PitFcstAtObs")
-    def test_cdf_threshold_dim_kwarg_is_correct(
-        self, mock_pit_cls, sample_dist
-    ) -> None:
-        """Test that Pit is called with cdf_threshold_dim='threshold'."""
-        mapper = MagicMock(spec=BaseBinMapper, floor_atom=False, ceiling_atom=False)
-        pit_diagnostics(np.array([2.0, 8.0]), sample_dist, mapper)
-        assert mock_pit_cls.call_args[1]["cdf_threshold_dim"] == "threshold"
-
-    @patch("ordboost.metrics.PitFcstAtObs")
     def test_original_grid_cdf_not_mutated(self, mock_pit_cls, sample_dist) -> None:
         """Test that dist.grid_cdf is not mutated in place when atom
         overwrites are applied, confirming fcst_right/fcst_left are
-        independent copies."""
+        independent copies.
+        """
         original = sample_dist.grid_cdf.copy()
         mapper = MagicMock(spec=BaseBinMapper, floor_atom=True, ceiling_atom=True)
         pit_diagnostics(np.array([2.0, 8.0]), sample_dist, mapper)
         np.testing.assert_array_equal(sample_dist.grid_cdf, original)
 
 
-class TestPitDiagnosticsPrecision:
-    """Tests for the `precision` rounding parameter of pit_diagnostics."""
-
-    @pytest.fixture
-    def sample_dist(self) -> ContinuousPredictiveDistribution:
-        """Same fixture as TestPitDiagnostics.sample_dist."""
-        grid_y = np.array([-0.0001, 0.0, 5.0, 9.9999, 10.0])
-        grid_cdf = np.array(
-            [
-                [0.0, 0.3, 0.6, 0.85, 1.0],
-                [0.0, 0.1, 0.5, 0.90, 1.0],
-            ]
-        )
-        return ContinuousPredictiveDistribution(grid_y=grid_y, grid_cdf=grid_cdf)
-
-    @patch("ordboost.metrics.PitFcstAtObs")
-    def test_default_precision_rounds_to_two_decimals(
-        self, mock_pit_cls, sample_dist
-    ) -> None:
-        """Test that the default precision=2 rounds fcst_at_obs to 2
-        decimal places."""
-        mapper = MagicMock(spec=BaseBinMapper, floor_atom=False, ceiling_atom=False)
-        pit_diagnostics(np.array([2.0, 8.0]), sample_dist, mapper)
-
-        fcst_right = mock_pit_cls.call_args[0][0].values
-        expected = np.round(sample_dist.cdf(np.array([2.0, 8.0])), 2)
-        np.testing.assert_array_equal(fcst_right, expected)
-
-    @patch("ordboost.metrics.PitFcstAtObs")
-    def test_precision_none_disables_rounding(self, mock_pit_cls, sample_dist) -> None:
-        """Test that precision=None leaves fcst_at_obs at full precision."""
-        mapper = MagicMock(spec=BaseBinMapper, floor_atom=False, ceiling_atom=False)
-        pit_diagnostics(np.array([2.0, 8.0]), sample_dist, mapper, precision=None)
-
-        fcst_right = mock_pit_cls.call_args[0][0].values
-        expected = sample_dist.cdf(np.array([2.0, 8.0]))
-        np.testing.assert_array_equal(fcst_right, expected)
-
-    def test_bool_precision_raises_type_error(self, sample_dist) -> None:
-        """Test that a bool precision raises TypeError (bool is a
-        subclass of int in Python and must be explicitly rejected)."""
-        mapper = MagicMock(spec=BaseBinMapper, floor_atom=False, ceiling_atom=False)
-        with pytest.raises(TypeError, match="Expected 'precision'"):
-            pit_diagnostics(np.array([2.0, 8.0]), sample_dist, mapper, precision=True)
-
-    def test_float_precision_raises_type_error(self, sample_dist) -> None:
-        """Test that a non-integer precision raises TypeError."""
-        mapper = MagicMock(spec=BaseBinMapper, floor_atom=False, ceiling_atom=False)
-        with pytest.raises(TypeError, match="Expected 'precision'"):
-            pit_diagnostics(np.array([2.0, 8.0]), sample_dist, mapper, precision=1.5)
-
-    def test_zero_precision_raises_value_error(self, sample_dist) -> None:
-        """Test that precision=0 raises ValueError."""
-        mapper = MagicMock(spec=BaseBinMapper, floor_atom=False, ceiling_atom=False)
-        with pytest.raises(ValueError, match="greater than 0"):
-            pit_diagnostics(np.array([2.0, 8.0]), sample_dist, mapper, precision=0)
-
-    def test_negative_precision_raises_value_error(self, sample_dist) -> None:
-        """Test that a negative precision raises ValueError."""
-        mapper = MagicMock(spec=BaseBinMapper, floor_atom=False, ceiling_atom=False)
-        with pytest.raises(ValueError, match="greater than 0"):
-            pit_diagnostics(np.array([2.0, 8.0]), sample_dist, mapper, precision=-1)
-
-
 class TestPitKsTest:
-    """Tests for pit_ks_test."""
+    """Tests for pit_ks_test.
+
+    `plotting_points_parametric()` returns a dict of xarray objects keyed
+    by "x_plotting_position"/"y_plotting_position" on the real
+    scores.probability Pit/PitFcstAtObs classes (confirmed against the
+    installed `scores` package) -- not a bare DataArray. An earlier
+    version of pit_ks_test called `.values` directly on that dict, which
+    silently resolved to `dict.values` (a bound method) instead of
+    raising, and crashed deep inside scipy the first time it was used
+    with the real dependency rather than a loosely-shaped mock. These
+    mocks are shaped to match that real dict-based contract.
+    """
 
     def test_returns_float_statistic_and_pvalue(self) -> None:
         """Test that the return types are plain floats, not numpy scalars
-        or scipy result objects."""
+        or scipy result objects.
+        """
         rng = np.random.default_rng(42)
         mock_pit = MagicMock()
-        mock_pit.plotting_points_parametric.return_value = xr.DataArray(
-            rng.uniform(0, 1, size=200)
-        )
+        mock_pit.plotting_points_parametric.return_value = {
+            "x_plotting_position": xr.DataArray(rng.uniform(0, 1, size=200))
+        }
         stat, pval = pit_ks_test(mock_pit)
         assert isinstance(stat, float)
         assert isinstance(pval, float)
 
     def test_uniform_data_gives_high_pvalue(self) -> None:
-        """Test that genuinely uniform PIT values yield a high (non-rejecting) p-value."""
+        """Test uniform PIT values yield a high (non-rejecting) p-value."""
         rng = np.random.default_rng(0)
         mock_pit = MagicMock()
-        mock_pit.plotting_points_parametric.return_value = xr.DataArray(
-            rng.uniform(0, 1, size=2000)
-        )
+        mock_pit.plotting_points_parametric.return_value = {
+            "x_plotting_position": xr.DataArray(rng.uniform(0, 1, size=2000))
+        }
         _, pval = pit_ks_test(mock_pit)
         assert pval > 0.05
 
     def test_skewed_data_gives_low_pvalue(self) -> None:
         """Test that clearly non-uniform PIT values (concentrated near 0)
-        yield a low (rejecting) p-value."""
+        yield a low (rejecting) p-value.
+        """
         rng = np.random.default_rng(0)
         mock_pit = MagicMock()
-        mock_pit.plotting_points_parametric.return_value = xr.DataArray(
-            rng.beta(0.5, 5.0, size=500)
-        )
+        mock_pit.plotting_points_parametric.return_value = {
+            "x_plotting_position": xr.DataArray(rng.beta(0.5, 5.0, size=500))
+        }
         _, pval = pit_ks_test(mock_pit)
         assert pval < 0.01
 
     def test_uses_plotting_points_parametric_not_plotting_points(self) -> None:
         """Test that the deduplicated plotting_points_parametric method is
         used, not plotting_points (which contains duplicate values at
-        discontinuities and would bias the KS test)."""
+        discontinuities and would bias the KS test).
+        """
         mock_pit = MagicMock()
-        mock_pit.plotting_points_parametric.return_value = xr.DataArray(
-            np.linspace(0.01, 0.99, 50)
-        )
+        mock_pit.plotting_points_parametric.return_value = {
+            "x_plotting_position": xr.DataArray(np.linspace(0.01, 0.99, 50))
+        }
         pit_ks_test(mock_pit)
         mock_pit.plotting_points_parametric.assert_called_once()
         mock_pit.plotting_points.assert_not_called()
 
+    def test_uses_x_plotting_position_not_y(self) -> None:
+        """Test that the KS test is computed on 'x_plotting_position',
+        not 'y_plotting_position' -- a regression test distinguishing the
+        two dict keys explicitly, since a wrong-key mixup would still
+        type-check and run without error.
+        """
+        from scipy.stats import kstest
+
+        x_data = np.array([0.1, 0.2, 0.5, 0.6, 0.9])
+        y_data = np.array([0.0, 0.0, 0.0, 0.0, 0.0])  # degenerate: KS vs x_data differs
+        mock_pit = MagicMock()
+        mock_pit.plotting_points_parametric.return_value = {
+            "x_plotting_position": xr.DataArray(x_data),
+            "y_plotting_position": xr.DataArray(y_data),
+        }
+
+        stat, pval = pit_ks_test(mock_pit)
+        expected = kstest(x_data, "uniform")
+        assert stat == pytest.approx(expected.statistic)
+        assert pval == pytest.approx(expected.pvalue)
+
     def test_known_statistic_against_manual_scipy_call(self) -> None:
         """Test the wrapper's output against a direct, independent call to
         scipy.stats.kstest on the same data, confirming no transformation
-        is silently applied beyond passing values through."""
+        is silently applied beyond passing values through.
+        """
         from scipy.stats import kstest
 
         data = np.array([0.1, 0.2, 0.5, 0.6, 0.9])
         mock_pit = MagicMock()
-        mock_pit.plotting_points_parametric.return_value = xr.DataArray(data)
+        mock_pit.plotting_points_parametric.return_value = {
+            "x_plotting_position": xr.DataArray(data)
+        }
 
         stat, pval = pit_ks_test(mock_pit)
         expected = kstest(data, "uniform")
         assert stat == pytest.approx(expected.statistic)
         assert pval == pytest.approx(expected.pvalue)
+
+    def test_real_pit_diagnostics_output_end_to_end(self) -> None:
+        """Integration test using the real (unmocked) scores.probability
+        PitFcstAtObs returned by pit_diagnostics, not a MagicMock --
+        this is the exact composition pit_ks_test's own docstring
+        documents ("e.g. from pit_diagnostics"), and is what would have
+        caught the dict-vs-DataArray contract mismatch immediately.
+        """
+        rng = np.random.default_rng(1)
+        grid_y = np.array([0.0, 5.0, 10.0, 15.0, 20.0])
+        grid_cdf = np.sort(rng.uniform(0.0, 1.0, (30, 5)), axis=1)
+        grid_cdf[:, 0] = 0.0
+        grid_cdf[:, -1] = 1.0
+        dist = ContinuousPredictiveDistribution(grid_y=grid_y, grid_cdf=grid_cdf)
+        y_true = rng.uniform(0.0, 20.0, 30)
+        mapper = MagicMock(spec=BaseBinMapper, floor_atom=False, ceiling_atom=False)
+
+        pit = pit_diagnostics(y_true, dist, mapper)
+        stat, pval = pit_ks_test(pit)
+
+        assert isinstance(stat, float)
+        assert isinstance(pval, float)
+        assert 0.0 <= stat <= 1.0
+        assert 0.0 <= pval <= 1.0

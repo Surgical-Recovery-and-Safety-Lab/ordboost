@@ -2,8 +2,58 @@
 
 import numpy as np
 import pytest
+from sklearn.base import clone
 
 from ordboost.mappers import QuantileBinMapper
+
+
+class TestInit:
+    """Tests for QuantileBinMapper.__init__ parameter storage and threading."""
+
+    def test_default_parameters(self) -> None:
+        """Test that quantiles defaults to (0.25, 0.5, 0.75) and that
+        base-class parameters retain BaseBinMapper's own defaults.
+        """
+        mapper = QuantileBinMapper()
+        assert mapper.quantiles == (0.25, 0.50, 0.75)
+        assert mapper.bin_edges is None
+        assert mapper.lower_bound is None
+        assert mapper.upper_bound is None
+        assert mapper.floor_atom is False
+        assert mapper.ceiling_atom is False
+        assert mapper.boundary_epsilon == 1e-4
+
+    def test_base_parameters_threaded_through_super(self) -> None:
+        """Test that base-class parameters are correctly passed to
+        BaseBinMapper.__init__ rather than silently dropped.
+        """
+        mapper = QuantileBinMapper(
+            bin_edges=[0.0, 10.0],
+            quantiles=(0.1, 0.9),
+            lower_bound=None,
+            ceiling_atom=True,
+            upper_bound=10.0,
+            boundary_epsilon=0.01,
+        )
+        assert mapper.bin_edges == [0.0, 10.0]
+        assert mapper.quantiles == (0.1, 0.9)
+        assert mapper.lower_bound is None
+        assert mapper.upper_bound == 10.0
+        assert mapper.ceiling_atom is True
+        assert mapper.boundary_epsilon == 0.01
+
+
+class TestSklearnCloneCompatibility:
+    """Tests that QuantileBinMapper satisfies sklearn's clone contract."""
+
+    def test_clone_preserves_quantiles(self) -> None:
+        """Test that clone() reproduces the same quantiles parameter,
+        confirming it is threaded correctly for get_params/set_params.
+        """
+        mapper = QuantileBinMapper(bin_edges=[10.0, 20.0], quantiles=(0.1, 0.5, 0.9))
+        cloned = clone(mapper)
+        assert cloned.get_params() == mapper.get_params()
+        assert cloned.quantiles == (0.1, 0.5, 0.9)
 
 
 class TestValidateIntraBinParams:
@@ -11,7 +61,8 @@ class TestValidateIntraBinParams:
 
     def test_sets_quantiles_sorted(self) -> None:
         """Test that quantiles_ is set as a sorted array, even when the
-        input is given out of order."""
+        input is given out of order.
+        """
         mapper = QuantileBinMapper(quantiles=(0.75, 0.25, 0.5))
         mapper._validate_intra_bin_params()
         np.testing.assert_array_equal(mapper.quantiles_, np.array([0.25, 0.5, 0.75]))
@@ -61,7 +112,8 @@ class TestIntraBinPoints:
 
     def test_weights_equal_quantile_levels_offset_by_bin_index(self) -> None:
         """Test that weights are exactly k + quantile_level, not empirically
-        derived from the data."""
+        derived from the data.
+        """
         mapper = QuantileBinMapper(quantiles=(0.25, 0.5, 0.75))
         mapper._validate_intra_bin_params()
         bin_data = np.array([10.0, 12.0, 14.0, 16.0, 18.0, 20.0])
@@ -70,7 +122,8 @@ class TestIntraBinPoints:
 
     def test_empty_bin_interpolates_linearly(self) -> None:
         """Test that an empty bin falls back to linear interpolation
-        between low and high at each quantile level."""
+        between low and high at each quantile level.
+        """
         mapper = QuantileBinMapper(quantiles=(0.25, 0.5, 0.75))
         mapper._validate_intra_bin_params()
         points, weights = mapper._intra_bin_points(
@@ -90,7 +143,8 @@ class TestIntraBinPoints:
 
     def test_output_length_matches_n_quantiles(self) -> None:
         """Test that the number of returned points/weights matches the
-        number of fitted quantile levels."""
+        number of fitted quantile levels.
+        """
         mapper = QuantileBinMapper(quantiles=(0.1, 0.25, 0.5, 0.75, 0.9))
         mapper._validate_intra_bin_params()
         points, weights = mapper._intra_bin_points(
@@ -117,14 +171,16 @@ class TestFitIntegration:
 
     def test_validates_quantiles_before_building_grid(self) -> None:
         """Test that fit raises for invalid quantiles before attempting
-        to build the grid, rather than failing later or silently."""
+        to build the grid, rather than failing later or silently.
+        """
         mapper = QuantileBinMapper(bin_edges=[0.0, 10.0], quantiles=(0.0, 0.5))
         with pytest.raises(ValueError, match="strictly within"):
             mapper.fit(np.array([1.0, 5.0]))
 
     def test_fitted_grid_contains_all_quantile_points(self) -> None:
         """Test that after fit, grid_y_ contains a point for every fitted
-        quantile level, correctly positioned by empirical value."""
+        quantile level, correctly positioned by empirical value.
+        """
         mapper = QuantileBinMapper(bin_edges=[10.0, 25.0], quantiles=(0.25, 0.5, 0.75))
         bin_data = np.array([10.0, 12.0, 14.0, 16.0, 18.0, 20.0])
         mapper.fit(bin_data)
@@ -178,7 +234,8 @@ class TestTransformIntegration:
     def test_transform_matches_to_continuous_dist_mean(self) -> None:
         """Test that transform's output equals to_continuous_dist(pmf).mean(),
         confirming QuantileBinMapper does not override the inherited
-        default (unlike EmpiricalMedianBinMapper)."""
+        default (unlike EmpiricalMedianBinMapper).
+        """
         mapper = QuantileBinMapper(bin_edges=[0.0, 10.0, 20.0])
         mapper.fit(np.array([1.0, 4.0, 6.0, 15.0, 15.0, 19.0]))
         pmf = np.array([[0.2, 0.3, 0.4, 0.1], [0.1, 0.7, 0.1, 0.1]])

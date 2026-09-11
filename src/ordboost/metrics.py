@@ -265,7 +265,8 @@ def pinball_loss(
         weights = np.asarray(sample_weight, dtype=float)
         if weights.shape != y_true_arr.shape:
             raise ValueError(
-                f"Expected 'sample_weight' shape {y_true_arr.shape}, got {weights.shape}."
+                f"Expected 'sample_weight' shape {y_true_arr.shape}, "
+                f"got {weights.shape}."
             )
         return float(np.average(loss, weights=weights))
 
@@ -325,7 +326,7 @@ def pinball_loss_skill_score(
 def marginal_calibration_curve(
     y_true: ArrayLike, dist: ContinuousPredictiveDistribution
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Computes the difference between the empirical CDF and the average CDF.
+    """Compute the difference between the empirical CDF and the average CDF.
 
     Parameters
     ----------
@@ -394,7 +395,8 @@ def interval_coverage_rate(
         weights = np.asarray(sample_weight, dtype=float)
         if weights.shape != y_true_arr.shape:
             raise ValueError(
-                f"Expected 'sample_weight' shape {y_true_arr.shape}, got {weights.shape}."
+                f"Expected 'sample_weight' shape {y_true_arr.shape}, "
+                f"got {weights.shape}."
             )
         return float(np.average(covered, weights=weights))
 
@@ -479,7 +481,8 @@ def winkler_score(
         weights = np.asarray(sample_weight, dtype=float)
         if weights.shape != y_true_arr.shape:
             raise ValueError(
-                f"Expected 'sample_weight' shape {y_true_arr.shape}, got {weights.shape}."
+                f"Expected 'sample_weight' shape {y_true_arr.shape}, "
+                f"got {weights.shape}."
             )
         return float(np.average(sample_scores, weights=weights))
 
@@ -599,5 +602,5 @@ def pit_ks_test(pit: Pit) -> tuple[float, float]:
 
     """
     points = pit.plotting_points_parametric()
-    result = kstest(points.values, "uniform")
+    result = kstest(points["x_plotting_position"].values, "uniform")
     return float(result.statistic), float(result.pvalue)

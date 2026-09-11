@@ -24,7 +24,8 @@ class TestInit:
 
     def test_kwargs_stored_separately(self) -> None:
         """Test that unrecognized keyword arguments are captured in
-        self.kwargs rather than raising at construction time."""
+        self.kwargs rather than raising at construction time.
+        """
         model = OrdBoostClassifier(max_leaf_nodes=15, early_stopping=False)
         assert model.kwargs == {"max_leaf_nodes": 15, "early_stopping": False}
 
@@ -33,7 +34,8 @@ class TestInit:
         confirming the fitted-attribute is only ever set in fit(), not
         pre-declared in __init__. This is the regression test for the
         check_is_fitted fix: hasattr(self, 'estimators_') must be False
-        pre-fit for NotFittedError to trigger correctly."""
+        pre-fit for NotFittedError to trigger correctly.
+        """
         model = OrdBoostClassifier()
         assert not hasattr(model, "estimators_")
 
@@ -45,7 +47,8 @@ class TestGetSetParams:
 
     def test_get_params_merges_kwargs_at_top_level(self) -> None:
         """Test that get_params exposes both explicit fields and pass-through
-        kwargs at the top level, with no raw 'kwargs' key visible."""
+        kwargs at the top level, with no raw 'kwargs' key visible.
+        """
         model = OrdBoostClassifier(learning_rate=0.05, max_leaf_nodes=15)
         params = model.get_params()
         assert params["learning_rate"] == 0.05
@@ -54,7 +57,8 @@ class TestGetSetParams:
 
     def test_set_params_updates_explicit_and_kwargs_fields(self) -> None:
         """Test that set_params routes known fields to attributes and
-        unknown fields into self.kwargs."""
+        unknown fields into self.kwargs.
+        """
         model = OrdBoostClassifier(learning_rate=0.1, max_leaf_nodes=31)
         model.set_params(learning_rate=0.01, max_leaf_nodes=15, min_samples_leaf=10)
 
@@ -64,13 +68,15 @@ class TestGetSetParams:
 
     def test_set_params_no_arguments_returns_self(self) -> None:
         """Test that calling set_params with no arguments is a no-op that
-        still returns self."""
+        still returns self.
+        """
         model = OrdBoostClassifier()
         assert model.set_params() is model
 
     def test_clone_compatibility(self) -> None:
         """Test that sklearn.base.clone produces an independent,
-        correctly parameterized copy, including pass-through kwargs."""
+        correctly parameterized copy, including pass-through kwargs.
+        """
         model = OrdBoostClassifier(max_iter=20, max_bins=64, random_state=42)
         cloned = clone(model)
 
@@ -102,7 +108,8 @@ class TestFit:
 
     def test_fit_sets_expected_attributes(self, synthetic_ordinal_data) -> None:
         """Test that fit sets classes_, estimators_, n_features_in_ with
-        the expected shapes."""
+        the expected shapes.
+        """
         X_train, y_train, _, _ = synthetic_ordinal_data
         model = OrdBoostClassifier(max_iter=20, min_samples_leaf=5, random_state=42)
         model.fit(X_train, y_train)
@@ -115,7 +122,8 @@ class TestFit:
 
     def test_fit_sorts_classes(self) -> None:
         """Test that classes_ is sorted ascending regardless of the order
-        classes appear in the training target."""
+        classes appear in the training target.
+        """
         X = np.random.randn(60, 2)
         y = np.tile([30, 0, 10], 20)
         model = OrdBoostClassifier(max_iter=5)
@@ -150,7 +158,8 @@ class TestFit:
 
     def test_fit_nan_in_X_is_permitted(self, synthetic_ordinal_data) -> None:
         """Test that NaN values in X do not raise, since
-        HistGradientBoostingClassifier handles missing features natively."""
+        HistGradientBoostingClassifier handles missing features natively.
+        """
         X_train, y_train, _, _ = synthetic_ordinal_data
         X_train = X_train.copy()
         X_train[0, 0] = np.nan
@@ -161,12 +170,76 @@ class TestFit:
     def test_binary_edge_targets_use_correct_thresholds(self) -> None:
         """Test that the k-th binary edge target correctly encodes
         Y <= classes_[k], by checking the fitted number of edge
-        estimators matches n_classes - 1 for a hand-constructed dataset."""
+        estimators matches n_classes - 1 for a hand-constructed dataset.
+        """
         X = np.random.randn(80, 2)
         y = np.repeat([0, 1, 2, 3], 20)
         model = OrdBoostClassifier(max_iter=5)
         model.fit(X, y)
         assert len(model.estimators_) == len(model.classes_) - 1
+
+    def test_fit_two_classes_produces_single_edge_estimator(self) -> None:
+        """Test the minimum supported case (2 classes), which collapses
+        to a single cumulative edge model (n_classes - 1 == 1).
+        """
+        X = np.random.randn(40, 2)
+        y = np.tile([0, 1], 20)
+        model = OrdBoostClassifier(max_iter=5)
+        model.fit(X, y)
+        assert len(model.classes_) == 2
+        assert len(model.estimators_) == 1
+
+    def test_fit_with_explicit_classes_matching_observed_y(self) -> None:
+        """Test that passing 'classes' equal to the observed unique
+        labels behaves identically to leaving it unset.
+        """
+        X = np.random.randn(60, 2)
+        y = np.tile([0, 5, 10], 20)
+        model = OrdBoostClassifier(max_iter=5)
+        model.fit(X, y, classes=[0, 5, 10])
+        np.testing.assert_array_equal(model.classes_, np.array([0, 5, 10]))
+        assert len(model.estimators_) == 2
+
+    def test_fit_with_explicit_classes_sorts_unsorted_input(self) -> None:
+        """Test that an out-of-order 'classes' array is sorted before
+        being stored as classes_.
+        """
+        X = np.random.randn(40, 2)
+        y = np.tile([0, 1], 20)
+        model = OrdBoostClassifier(max_iter=5)
+        model.fit(X, y, classes=[10, 0, 1])
+        np.testing.assert_array_equal(model.classes_, np.array([0, 1, 10]))
+
+    def test_fit_with_explicit_classes_including_unobserved_class(self) -> None:
+        """Test that 'classes' may include a label never observed in y
+        (e.g. an empty bin), and that classes_ retains it -- the
+        documented use case that OrdBoostRegressor relies on to keep an
+        empty bin present via classes=np.arange(n_bins).
+        """
+        X = np.random.randn(40, 2)
+        y = np.tile([0, 1], 20)  # class '5' never appears
+        model = OrdBoostClassifier(max_iter=5)
+        model.fit(X, y, classes=[0, 1, 5])
+        np.testing.assert_array_equal(model.classes_, np.array([0, 1, 5]))
+        assert len(model.estimators_) == 2
+
+    def test_fit_explicit_classes_too_few_raises(self) -> None:
+        """Test that 'classes' with fewer than 2 elements raises ValueError."""
+        X = np.random.randn(20, 2)
+        y = np.tile([0, 1], 10)
+        model = OrdBoostClassifier()
+        with pytest.raises(ValueError, match="at least 2 unique values"):
+            model.fit(X, y, classes=[5])
+
+    def test_fit_y_label_missing_from_explicit_classes_raises(self) -> None:
+        """Test that a y label absent from an explicitly supplied
+        'classes' array raises ValueError naming the missing label.
+        """
+        X = np.random.randn(20, 2)
+        y = np.tile([0, 1], 10)
+        model = OrdBoostClassifier()
+        with pytest.raises(ValueError, match=r"not present in 'classes'.*\[1\]"):
+            model.fit(X, y, classes=[0, 2])
 
 
 class TestEnforceMonotonicity:
@@ -174,7 +247,8 @@ class TestEnforceMonotonicity:
 
     def test_running_max_produces_non_decreasing_rows(self) -> None:
         """Test that running_max monotonicity yields non-decreasing values
-        along each sample's row."""
+        along each sample's row.
+        """
         model = OrdBoostClassifier(monotonicity="running_max")
         cum_probs = np.array([[0.5, 0.3, 0.8, 0.6], [0.1, 0.4, 0.2, 0.9]])
         result = model._enforce_monotonicity(cum_probs)
@@ -196,7 +270,8 @@ class TestEnforceMonotonicity:
 
     def test_isotonic_produces_non_decreasing_rows(self) -> None:
         """Test that isotonic monotonicity yields non-decreasing values
-        along each sample's row."""
+        along each sample's row.
+        """
         model = OrdBoostClassifier(monotonicity="isotonic")
         cum_probs = np.array([[0.5, 0.3, 0.8, 0.6], [0.1, 0.4, 0.2, 0.9]])
         result = model._enforce_monotonicity(cum_probs)
@@ -219,7 +294,8 @@ class TestEnforceMonotonicity:
 
     def test_already_monotonic_input_unchanged(self) -> None:
         """Test that an already non-decreasing row is left unchanged by
-        both monotonicity methods."""
+        both monotonicity methods.
+        """
         cum_probs = np.array([[0.1, 0.3, 0.6, 0.9]])
         for method in ("running_max", "isotonic"):
             model = OrdBoostClassifier(monotonicity=method)
@@ -246,7 +322,8 @@ class TestPredictProba:
 
     def test_not_fitted_raises(self) -> None:
         """Test that calling predict_proba before fit raises NotFittedError,
-        confirming the estimators_ pre-declaration fix works end-to-end."""
+        confirming the estimators_ pre-declaration fix works end-to-end.
+        """
         model = OrdBoostClassifier()
         with pytest.raises(NotFittedError):
             model.predict_proba(np.ones((5, 2)))
@@ -275,12 +352,29 @@ class TestPredictProba:
         pmf = model.predict_proba(X_test)
         assert np.all(pmf >= 0.0)
 
+    def test_output_width_includes_unobserved_explicit_class(self) -> None:
+        """Test that predict_proba's output width matches the full
+        explicit 'classes' count, including a class never observed
+        during fit, and that rows still sum to 1.0 -- the guaranteed-
+        width contract documented on fit()'s 'classes' parameter.
+        """
+        rng = np.random.default_rng(0)
+        X = rng.standard_normal((40, 2))
+        y = np.tile([0, 1], 20)  # class '5' never appears in training
+        model = OrdBoostClassifier(max_iter=10, random_state=0)
+        model.fit(X, y, classes=[0, 1, 5])
+
+        pmf = model.predict_proba(X)
+        assert pmf.shape == (40, 3)
+        np.testing.assert_allclose(pmf.sum(axis=1), 1.0, atol=1e-6)
+
     @pytest.mark.parametrize("mono_method", ["running_max", "isotonic"])
     def test_valid_pmf_for_both_monotonicity_methods(
         self, mono_method, fitted_model
     ) -> None:
         """Test that both monotonicity methods produce a valid PMF
-        (non-negative, row-normalized) end to end."""
+        (non-negative, row-normalized) end to end.
+        """
         _, X_test = fitted_model
         rng = np.random.default_rng(0)
         X_train = rng.standard_normal((60, 4))
@@ -309,7 +403,8 @@ class TestPredictDist:
 
     def test_returns_discrete_predictive_distribution(self, fitted_model) -> None:
         """Test that predict_dist returns a DiscretePredictiveDistribution
-        wired with the fitted classes_."""
+        wired with the fitted classes_.
+        """
         model, X_test = fitted_model
         dist = model.predict_dist(X_test)
         assert isinstance(dist, DiscretePredictiveDistribution)
@@ -317,7 +412,8 @@ class TestPredictDist:
 
     def test_pmf_matches_predict_proba(self, fitted_model) -> None:
         """Test that the distribution's pmf matches predict_proba's output
-        directly, confirming predict_dist is a thin wrapper."""
+        directly, confirming predict_dist is a thin wrapper.
+        """
         model, X_test = fitted_model
         dist = model.predict_dist(X_test)
         np.testing.assert_allclose(dist.pmf, model.predict_proba(X_test))
@@ -352,7 +448,8 @@ class TestPredict:
     def test_median_predictions_are_valid_class_levels(self, fitted_model) -> None:
         """Test that median predictions are always one of the fitted
         ordinal class levels, unlike a continuous mapper's interpolated
-        predictions."""
+        predictions.
+        """
         model, X_test = fitted_model
         y_median = model.predict(X_test, method="median")
         assert set(y_median).issubset(set(model.classes_))

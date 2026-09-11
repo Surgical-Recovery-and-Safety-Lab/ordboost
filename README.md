@@ -89,7 +89,6 @@ p_loss = pinball_loss(y_test, y_pred_q90, alpha=0.9)
 
 print(f"Discrete CRPS: {crps:.4f}")
 print(f"Pinball Loss (q=0.9): {p_loss:.4f}")
-
 ```
 
 ### OrdBoostRegressor
@@ -135,7 +134,6 @@ for i in range(len(X_test)):
     print(f"  Predicted Median:    {y_pred_median[i]:.2f}")
     print(f"  80% Interval:        [{lower_80[i]:.2f}, {upper_80[i]:.2f}]")
     print(f"  P(Y <= 3.0):         {prob_under_3[i]:.2%}\n")
-    
 ```
 
 ---

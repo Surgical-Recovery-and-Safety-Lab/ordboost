@@ -2,6 +2,7 @@
 
 import numpy as np
 import pytest
+from sklearn.base import clone
 
 from ordboost.mappers import UniformBinMapper
 
@@ -16,7 +17,8 @@ class TestInit:
 
     def test_base_parameters_threaded_through_super(self) -> None:
         """Test that base-class parameters are correctly passed to
-        BaseBinMapper.__init__ rather than silently dropped."""
+        BaseBinMapper.__init__ rather than silently dropped.
+        """
         mapper = UniformBinMapper(
             bin_edges=[0.0, 10.0],
             n_points=3,
@@ -28,9 +30,20 @@ class TestInit:
         assert mapper.bin_edges == [0.0, 10.0]
         assert mapper.n_points == 3
         assert mapper.lower_bound is None
-        assert mapper.upper_bound is 10.0
+        assert mapper.upper_bound == 10.0
         assert mapper.ceiling_atom is True
         assert mapper.boundary_epsilon == 0.01
+
+
+class TestSklearnCloneCompatibility:
+    """Tests that UniformBinMapper satisfies sklearn's clone contract."""
+
+    def test_clone_preserves_n_points(self) -> None:
+        """Test that clone() reproduces the same n_points parameter."""
+        mapper = UniformBinMapper(bin_edges=[10.0, 20.0], n_points=3)
+        cloned = clone(mapper)
+        assert cloned.get_params() == mapper.get_params()
+        assert cloned.n_points == 3
 
 
 class TestValidateIntraBinParams:
@@ -63,7 +76,8 @@ class TestValidateIntraBinParams:
     def test_bool_n_points_raises_type_error(self) -> None:
         """Test that a bool n_points is rejected, even though bool is a
         subclass of int in Python, since it is not a meaningful point
-        count and is most likely a user error."""
+        count and is most likely a user error.
+        """
         mapper = UniformBinMapper(n_points=True)
         with pytest.raises(TypeError, match="Expected 'n_points' to be an int"):
             mapper._validate_intra_bin_params()
@@ -74,7 +88,8 @@ class TestIntraBinPoints:
 
     def test_zero_points_returns_empty_arrays(self) -> None:
         """Test that n_points_=0 returns no interior points, matching
-        the null-mapper baseline."""
+        the null-mapper baseline.
+        """
         mapper = UniformBinMapper(n_points=0)
         mapper._validate_intra_bin_params()
         points, weights = mapper._intra_bin_points(
@@ -85,7 +100,8 @@ class TestIntraBinPoints:
 
     def test_one_point_at_midpoint_with_weight_half(self) -> None:
         """Test that n_points_=1 places a single point at the geometric
-        midpoint with weight k + 0.5."""
+        midpoint with weight k + 0.5.
+        """
         mapper = UniformBinMapper(n_points=1)
         mapper._validate_intra_bin_params()
         points, weights = mapper._intra_bin_points(
@@ -96,7 +112,8 @@ class TestIntraBinPoints:
 
     def test_three_points_evenly_spaced_with_quarter_weights(self) -> None:
         """Test that n_points_=3 places points at 1/4, 2/4, 3/4 of the
-        bin width, with matching quarter-fraction weights."""
+        bin width, with matching quarter-fraction weights.
+        """
         mapper = UniformBinMapper(n_points=3)
         mapper._validate_intra_bin_params()
         points, weights = mapper._intra_bin_points(
@@ -114,7 +131,8 @@ class TestIntraBinPoints:
 
     def test_independent_of_bin_data(self) -> None:
         """Test that point placement is unaffected by bin_data, unlike
-        the empirical mean/median/quantile mappers."""
+        the empirical mean/median/quantile mappers.
+        """
         mapper = UniformBinMapper(n_points=3)
         mapper._validate_intra_bin_params()
         points_empty, _ = mapper._intra_bin_points(
@@ -127,7 +145,8 @@ class TestIntraBinPoints:
 
     def test_points_strictly_interior(self) -> None:
         """Test that returned points never equal low or high, for any
-        n_points_ >= 1, since fractions are strictly within (0, 1)."""
+        n_points_ >= 1, since fractions are strictly within (0, 1).
+        """
         mapper = UniformBinMapper(n_points=5)
         mapper._validate_intra_bin_params()
         points, _ = mapper._intra_bin_points(np.array([]), low=10.0, high=20.0, k=0)
@@ -143,7 +162,8 @@ class TestFitIntegration:
     def test_null_mapper_grid_is_edges_only(self) -> None:
         """Test that n_points=0 produces a grid with no interior
         refinement beyond the boundary/anchor points BaseBinMapper adds
-        for every mapper."""
+        for every mapper.
+        """
         mapper = UniformBinMapper(bin_edges=[0.0, 10.0, 20.0], n_points=0)
         mapper.fit(np.array([1.0, 5.0, 15.0, 19.0]))
         # Only floor anchor, bin edges (0, 10, 20) -- no interior points
@@ -151,7 +171,8 @@ class TestFitIntegration:
 
     def test_fitted_grid_contains_evenly_spaced_points(self) -> None:
         """Test that after fit, grid_y_ contains the expected evenly
-        spaced interior points for each bin."""
+        spaced interior points for each bin.
+        """
         mapper = UniformBinMapper(bin_edges=[0.0, 10.0], n_points=1)
         mapper.fit(np.array([2.0, 8.0]))
         assert np.any(np.isclose(mapper.grid_y_, 5.0))

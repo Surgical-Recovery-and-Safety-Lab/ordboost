@@ -63,7 +63,8 @@ class OrdBoostClassifier(BaseEstimator, ClassifierMixin):
     predict_proba(X)
         Predict class probability mass functions (PMF) for X.
     predict_dist(X)
-        Predict probability mass distributions wrapped in a `DiscretePredictiveDistribution`.
+        Predict probability mass distributions wrapped in a
+        `DiscretePredictiveDistribution`.
     predict(X)
         Predict point estimates (median or expected value) for X.
 
@@ -304,9 +305,8 @@ class OrdBoostClassifier(BaseEstimator, ClassifierMixin):
 
         from sklearn.isotonic import isotonic_regression
 
-        n_samples, n_edges = cum_probs.shape
+        n_samples, _ = cum_probs.shape
         monotonic_probs = np.empty_like(cum_probs)
-        x_grid = np.arange(n_edges)
 
         for i in range(n_samples):
             monotonic_probs[i] = isotonic_regression(
@@ -454,9 +454,10 @@ class OrdBoostRegressor(BaseEstimator, RegressorMixin):
     bin_strategy : {"quantile", "uniform"}, default="quantile"
         Strategy used to define automatic bin boundaries when `bin_edges`
         is None.
-    mapper : BaseBinMapper, {"median", "mean", "quantile", "uniform", "continuous"} or None, default="median"
+    mapper : BaseBinMapper, str, or None, default="median"
         Bin mapping strategy used to convert predicted PMFs back to
-        continuous predictions. A string selects the corresponding
+        continuous predictions. One of {"median", "mean", "quantile",
+        "uniform", "continuous"} selects the corresponding
         `BaseBinMapper` subclass, constructed automatically with
         `bin_edges_` and any `mapper_kwargs`. A `BaseBinMapper` instance
         is cloned and fitted with `bin_edges_`. `None` is equivalent to
@@ -649,7 +650,7 @@ class OrdBoostRegressor(BaseEstimator, RegressorMixin):
 
         if self.bin_strategy == "quantile":
             quantiles = np.linspace(0.0, 1.0, self.n_bins + 1)
-            edges = np.quantile(y, quantiles)
+            edges = np.quantile(y, quantiles)[1:-1]
             # Ensure unique edges if duplicates occur in dense regions
             edges = np.unique(edges)
             if len(edges) < 1:

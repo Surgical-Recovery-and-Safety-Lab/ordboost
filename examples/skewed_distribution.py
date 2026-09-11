@@ -249,6 +249,6 @@ ax.bar(
 ax.axhline(1.0 / 20, color="black", linestyle="--", linewidth=1, label="Uniform")
 ax.set_xlabel("PIT value")
 ax.set_ylabel("Proportion")
-ax.set_title(f"PIT histograms")
+ax.set_title("PIT histograms")
 ax.legend()
 plt.show()
