@@ -85,13 +85,16 @@ class TestComputeBinEdges:
             reg._compute_bin_edges(np.array([1.0, 2.0]))
 
     def test_bin_strategy_quantile(self) -> None:
-        """Test quantile bin strategy: edges are empirical quantiles of y
-        at n_bins + 1 evenly spaced probability levels."""
+        """Test quantile bin strategy: interior edges are empirical quantiles
+        of y at n_bins + 1 evenly spaced probability levels, with the two
+        outer levels (0.0 and 1.0) dropped since they are not interior
+        thresholds -- mirroring bin_strategy="uniform", which drops the
+        corresponding [y.min(), y.max()] endpoints via its own [1:-1] slice."""
         reg = OrdBoostRegressor(n_bins=4, bin_strategy="quantile")
         y = np.linspace(0.0, 100.0, 101)
         edges = reg._compute_bin_edges(y)
-        assert len(edges) == 5
-        np.testing.assert_allclose(edges, [0.0, 25.0, 50.0, 75.0, 100.0])
+        assert len(edges) == 3
+        np.testing.assert_allclose(edges, [25.0, 50.0, 75.0])
 
     def test_bin_strategy_quantile_deduplicates_dense_regions(self) -> None:
         """Test that duplicate quantile edges (from heavily repeated y values)
