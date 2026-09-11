@@ -599,5 +599,5 @@ def pit_ks_test(pit: Pit) -> tuple[float, float]:
 
     """
     points = pit.plotting_points_parametric()
-    result = kstest(points.values, "uniform")
+    result = kstest(points["x_plotting_position"].values, "uniform")
     return float(result.statistic), float(result.pvalue)
