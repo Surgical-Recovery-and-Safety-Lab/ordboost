@@ -649,7 +649,7 @@ class OrdBoostRegressor(BaseEstimator, RegressorMixin):
 
         if self.bin_strategy == "quantile":
             quantiles = np.linspace(0.0, 1.0, self.n_bins + 1)
-            edges = np.quantile(y, quantiles)
+            edges = np.quantile(y, quantiles)[1:-1]
             # Ensure unique edges if duplicates occur in dense regions
             edges = np.unique(edges)
             if len(edges) < 1:
