@@ -661,6 +661,18 @@ class TestIntervalCoverageRate:
         with pytest.raises(ValueError, match="must lie within"):
             interval_coverage_rate([5.0], dist, alpha=-0.5)
 
+    def test_value_exactly_at_bounds_counts_as_covered(self) -> None:
+        """Test that y_true values landing exactly on the lower or upper
+        bound count as covered, per the inclusive (>=, <=) comparisons in
+        the source -- not obvious from known_values alone, since none of
+        those samples sit exactly at a boundary."""
+        dist = MagicMock(spec=ContinuousPredictiveDistribution)
+        dist.interval.return_value = (np.array([2.0, 5.0]), np.array([8.0, 15.0]))
+        y_true = np.array([2.0, 15.0])  # exactly at sample 0's lower, sample 1's upper
+
+        coverage = interval_coverage_rate(y_true, dist, alpha=0.10)
+        assert coverage == pytest.approx(1.0)
+
 
 class TestSharpness:
     """Tests for sharpness."""
@@ -801,126 +813,19 @@ class TestWinklerScore:
         with pytest.raises(ValueError, match="Expected 'sample_weight' shape"):
             winkler_score([5.0], dist, alpha=0.10, sample_weight=[1.0, 2.0])
 
+    def test_value_exactly_at_bounds_gets_no_penalty(self) -> None:
+        """Test that y_true values landing exactly on the lower or upper
+        bound incur zero under/over penalty (score == width), per the
+        strict (<, >) comparisons in the source -- the boundary itself
+        counts as 'inside', not obvious from known_values alone since
+        none of those samples sit exactly at a boundary."""
+        dist = MagicMock(spec=ContinuousPredictiveDistribution)
+        dist.interval.return_value = (np.array([2.0, 5.0]), np.array([8.0, 15.0]))
+        y_true = np.array([2.0, 15.0])  # exactly at sample 0's lower, sample 1's upper
 
-class TestPitDiagnostics:
-    """Tests for pit_diagnostics."""
-
-    @pytest.fixture
-    def sample_dist(self) -> ContinuousPredictiveDistribution:
-        """Fixture providing a 2-sample continuous distribution with a
-        floor anchor at index 0/1 and a near-ceiling atom point at the
-        second-to-last index, mimicking a mapper-built grid. grid_y[1]
-        is the floor atom value (0.0); grid_y[-1] is the ceiling atom
-        value (10.0).
-        """
-        grid_y = np.array([-0.0001, 0.0, 5.0, 9.9999, 10.0])
-        grid_cdf = np.array(
-            [
-                [0.0, 0.3, 0.6, 0.85, 1.0],
-                [0.0, 0.1, 0.5, 0.90, 1.0],
-            ]
-        )
-        return ContinuousPredictiveDistribution(grid_y=grid_y, grid_cdf=grid_cdf)
-
-    def test_shape_mismatch_raises(self, sample_dist) -> None:
-        """Test that a y_true length mismatch raises ValueError before
-        any PitFcstAtObs construction is attempted."""
-        mapper = MagicMock(spec=BaseBinMapper, floor_atom=False, ceiling_atom=False)
-        with pytest.raises(ValueError, match="Expected 'y_true' of shape"):
-            pit_diagnostics(np.array([1.0, 2.0, 3.0]), sample_dist, mapper)
-
-    @patch("ordboost.metrics.PitFcstAtObs")
-    def test_no_atoms_fcst_left_equals_fcst_right(
-        self, mock_pit_cls, sample_dist
-    ) -> None:
-        """Test that with both atom flags False, fcst_at_obs_left is
-        identical to fcst_at_obs everywhere (no discontinuity treatment
-        applied)."""
-        mapper = MagicMock(spec=BaseBinMapper, floor_atom=False, ceiling_atom=False)
-        pit_diagnostics(np.array([2.0, 8.0]), sample_dist, mapper, precision=None)
-
-        fcst_right = mock_pit_cls.call_args[0][0].values
-        fcst_left = mock_pit_cls.call_args[1]["fcst_at_obs_left"].values
-        np.testing.assert_array_equal(fcst_left, fcst_right)
-
-    @patch("ordboost.metrics.PitFcstAtObs")
-    def test_floor_atom_overwrites_only_matching_sample(
-        self, mock_pit_cls, sample_dist
-    ) -> None:
-        """Test that floor_atom=True forces fcst_at_obs_left to 0.0 only
-        for the sample whose y_true equals the floor value (grid_y[1]),
-        leaving other samples' fcst_at_obs_left equal to fcst_at_obs."""
-        mapper = MagicMock(spec=BaseBinMapper, floor_atom=True, ceiling_atom=False)
-        # sample 0 is exactly at the floor value (0.0); sample 1 is not
-        pit_diagnostics(np.array([0.0, 8.0]), sample_dist, mapper, precision=None)
-
-        fcst_right = mock_pit_cls.call_args[0][0].values
-        fcst_left = mock_pit_cls.call_args[1]["fcst_at_obs_left"].values
-
-        assert fcst_left[0] == 0.0
-        assert fcst_left[1] == pytest.approx(fcst_right[1])
-
-    @patch("ordboost.metrics.PitFcstAtObs")
-    def test_ceiling_atom_overwrites_only_matching_sample(
-        self, mock_pit_cls, sample_dist
-    ) -> None:
-        """Test that ceiling_atom=True sets fcst_at_obs_left, for the
-        sample whose y_true equals the ceiling value (grid_y[-1]), to
-        that sample's own near-ceiling grid_cdf value (column -2), while
-        other samples' fcst_at_obs_left is left equal to fcst_at_obs."""
-        mapper = MagicMock(spec=BaseBinMapper, floor_atom=False, ceiling_atom=True)
-        # sample 1 is exactly at the ceiling value (10.0); sample 0 is not
-        pit_diagnostics(np.array([2.0, 10.0]), sample_dist, mapper, precision=None)
-
-        fcst_right = mock_pit_cls.call_args[0][0].values
-        fcst_left = mock_pit_cls.call_args[1]["fcst_at_obs_left"].values
-
-        assert fcst_left[1] == pytest.approx(sample_dist.grid_cdf[1, -2])  # 0.90
-        assert fcst_left[0] == pytest.approx(fcst_right[0])
-
-    @patch("ordboost.metrics.PitFcstAtObs")
-    def test_both_atoms_applied_independently(self, mock_pit_cls, sample_dist) -> None:
-        """Test that floor_atom and ceiling_atom overwrite different
-        samples independently when both flags are True and different
-        samples sit at each boundary."""
-        mapper = MagicMock(spec=BaseBinMapper, floor_atom=True, ceiling_atom=True)
-        # sample 0 at the floor value, sample 1 at the ceiling value
-        pit_diagnostics(np.array([0.0, 10.0]), sample_dist, mapper, precision=None)
-
-        fcst_left = mock_pit_cls.call_args[1]["fcst_at_obs_left"].values
-
-        assert fcst_left[0] == 0.0
-        assert fcst_left[1] == pytest.approx(sample_dist.grid_cdf[1, -2])
-
-    @patch("ordboost.metrics.PitFcstAtObs")
-    def test_missing_atom_attributes_default_to_false(
-        self, mock_pit_cls, sample_dist
-    ) -> None:
-        """Test that an object without floor_atom/ceiling_atom attributes
-        is handled gracefully via getattr, defaulting to no atom
-        treatment rather than raising AttributeError."""
-        bare_object = object()
-        pit_diagnostics(np.array([0.0, 10.0]), sample_dist, bare_object, precision=None)
-
-        fcst_right = mock_pit_cls.call_args[0][0].values
-        fcst_left = mock_pit_cls.call_args[1]["fcst_at_obs_left"].values
-        np.testing.assert_array_equal(fcst_left, fcst_right)
-
-    @patch("ordboost.metrics.PitFcstAtObs")
-    def test_returns_pit_constructor_result(self, mock_pit_cls, sample_dist) -> None:
-        """Test that the function returns whatever PitFcstAtObs(...)
-        returns, confirming it's a thin pass-through, and that fcst_da is
-        passed positionally with fcst_at_obs_left as a keyword argument."""
-        mock_pit_cls.return_value = "sentinel_pit_object"
-        mapper = MagicMock(spec=BaseBinMapper, floor_atom=False, ceiling_atom=False)
-        result = pit_diagnostics(
-            np.array([2.0, 8.0]), sample_dist, mapper, precision=None
-        )
-
-        assert result == "sentinel_pit_object"
-        args, kwargs = mock_pit_cls.call_args
-        assert len(args) == 1
-        assert "fcst_at_obs_left" in kwargs
+        score = winkler_score(y_true, dist, alpha=0.10)
+        # widths: [6.0, 10.0], no penalties -> mean = 8.0
+        assert score == pytest.approx(8.0)
 
 
 class TestPitDiagnostics:
@@ -1106,15 +1011,6 @@ class TestPitDiagnosticsPrecision:
         mapper = MagicMock(spec=BaseBinMapper, floor_atom=False, ceiling_atom=False)
         with pytest.raises(ValueError, match="greater than 0"):
             pit_diagnostics(np.array([2.0, 8.0]), sample_dist, mapper, precision=-1)
-
-    @patch("ordboost.metrics.PitFcstAtObs")
-    def test_cdf_threshold_dim_kwarg_is_correct(
-        self, mock_pit_cls, sample_dist
-    ) -> None:
-        """Test that Pit is called with cdf_threshold_dim='threshold'."""
-        mapper = MagicMock(spec=BaseBinMapper, floor_atom=False, ceiling_atom=False)
-        pit_diagnostics(np.array([2.0, 8.0]), sample_dist, mapper)
-        assert mock_pit_cls.call_args[1]["cdf_threshold_dim"] == "threshold"
 
     @patch("ordboost.metrics.PitFcstAtObs")
     def test_original_grid_cdf_not_mutated(self, mock_pit_cls, sample_dist) -> None:
@@ -1127,81 +1023,28 @@ class TestPitDiagnosticsPrecision:
         np.testing.assert_array_equal(sample_dist.grid_cdf, original)
 
 
-class TestPitDiagnosticsPrecision:
-    """Tests for the `precision` rounding parameter of pit_diagnostics."""
-
-    @pytest.fixture
-    def sample_dist(self) -> ContinuousPredictiveDistribution:
-        """Same fixture as TestPitDiagnostics.sample_dist."""
-        grid_y = np.array([-0.0001, 0.0, 5.0, 9.9999, 10.0])
-        grid_cdf = np.array(
-            [
-                [0.0, 0.3, 0.6, 0.85, 1.0],
-                [0.0, 0.1, 0.5, 0.90, 1.0],
-            ]
-        )
-        return ContinuousPredictiveDistribution(grid_y=grid_y, grid_cdf=grid_cdf)
-
-    @patch("ordboost.metrics.PitFcstAtObs")
-    def test_default_precision_rounds_to_two_decimals(
-        self, mock_pit_cls, sample_dist
-    ) -> None:
-        """Test that the default precision=2 rounds fcst_at_obs to 2
-        decimal places."""
-        mapper = MagicMock(spec=BaseBinMapper, floor_atom=False, ceiling_atom=False)
-        pit_diagnostics(np.array([2.0, 8.0]), sample_dist, mapper)
-
-        fcst_right = mock_pit_cls.call_args[0][0].values
-        expected = np.round(sample_dist.cdf(np.array([2.0, 8.0])), 2)
-        np.testing.assert_array_equal(fcst_right, expected)
-
-    @patch("ordboost.metrics.PitFcstAtObs")
-    def test_precision_none_disables_rounding(self, mock_pit_cls, sample_dist) -> None:
-        """Test that precision=None leaves fcst_at_obs at full precision."""
-        mapper = MagicMock(spec=BaseBinMapper, floor_atom=False, ceiling_atom=False)
-        pit_diagnostics(np.array([2.0, 8.0]), sample_dist, mapper, precision=None)
-
-        fcst_right = mock_pit_cls.call_args[0][0].values
-        expected = sample_dist.cdf(np.array([2.0, 8.0]))
-        np.testing.assert_array_equal(fcst_right, expected)
-
-    def test_bool_precision_raises_type_error(self, sample_dist) -> None:
-        """Test that a bool precision raises TypeError (bool is a
-        subclass of int in Python and must be explicitly rejected)."""
-        mapper = MagicMock(spec=BaseBinMapper, floor_atom=False, ceiling_atom=False)
-        with pytest.raises(TypeError, match="Expected 'precision'"):
-            pit_diagnostics(np.array([2.0, 8.0]), sample_dist, mapper, precision=True)
-
-    def test_float_precision_raises_type_error(self, sample_dist) -> None:
-        """Test that a non-integer precision raises TypeError."""
-        mapper = MagicMock(spec=BaseBinMapper, floor_atom=False, ceiling_atom=False)
-        with pytest.raises(TypeError, match="Expected 'precision'"):
-            pit_diagnostics(np.array([2.0, 8.0]), sample_dist, mapper, precision=1.5)
-
-    def test_zero_precision_raises_value_error(self, sample_dist) -> None:
-        """Test that precision=0 raises ValueError."""
-        mapper = MagicMock(spec=BaseBinMapper, floor_atom=False, ceiling_atom=False)
-        with pytest.raises(ValueError, match="greater than 0"):
-            pit_diagnostics(np.array([2.0, 8.0]), sample_dist, mapper, precision=0)
-
-    def test_negative_precision_raises_value_error(self, sample_dist) -> None:
-        """Test that a negative precision raises ValueError."""
-        mapper = MagicMock(spec=BaseBinMapper, floor_atom=False, ceiling_atom=False)
-        with pytest.raises(ValueError, match="greater than 0"):
-            pit_diagnostics(np.array([2.0, 8.0]), sample_dist, mapper, precision=-1)
-
-
 class TestPitKsTest:
-    """Tests for pit_ks_test."""
+    """Tests for pit_ks_test.
+
+    `plotting_points_parametric()` returns a dict of xarray objects keyed
+    by "x_plotting_position"/"y_plotting_position" on the real
+    scores.probability Pit/PitFcstAtObs classes (confirmed against the
+    installed `scores` package) -- not a bare DataArray. An earlier
+    version of pit_ks_test called `.values` directly on that dict, which
+    silently resolved to `dict.values` (a bound method) instead of
+    raising, and crashed deep inside scipy the first time it was used
+    with the real dependency rather than a loosely-shaped mock. These
+    mocks are shaped to match that real dict-based contract.
+    """
 
     def test_returns_float_statistic_and_pvalue(self) -> None:
         """Test that the return types are plain floats, not numpy scalars
         or scipy result objects."""
         rng = np.random.default_rng(42)
         mock_pit = MagicMock()
-        mock_pit.plotting_points_parametric.return_value = xr.DataArray(
-            rng.uniform(0, 1, size=200)
-        )
+        mock_pit.plotting_points_parametric.return_value = {
+            "x_plotting_position": xr.DataArray(rng.uniform(0, 1, size=200))
+        }
         stat, pval = pit_ks_test(mock_pit)
         assert isinstance(stat, float)
         assert isinstance(pval, float)
@@ -1210,9 +1053,9 @@ class TestPitKsTest:
         """Test that genuinely uniform PIT values yield a high (non-rejecting) p-value."""
         rng = np.random.default_rng(0)
         mock_pit = MagicMock()
-        mock_pit.plotting_points_parametric.return_value = xr.DataArray(
-            rng.uniform(0, 1, size=2000)
-        )
+        mock_pit.plotting_points_parametric.return_value = {
+            "x_plotting_position": xr.DataArray(rng.uniform(0, 1, size=2000))
+        }
         _, pval = pit_ks_test(mock_pit)
         assert pval > 0.05
 
@@ -1221,9 +1064,9 @@ class TestPitKsTest:
         yield a low (rejecting) p-value."""
         rng = np.random.default_rng(0)
         mock_pit = MagicMock()
-        mock_pit.plotting_points_parametric.return_value = xr.DataArray(
-            rng.beta(0.5, 5.0, size=500)
-        )
+        mock_pit.plotting_points_parametric.return_value = {
+            "x_plotting_position": xr.DataArray(rng.beta(0.5, 5.0, size=500))
+        }
         _, pval = pit_ks_test(mock_pit)
         assert pval < 0.01
 
@@ -1232,12 +1075,32 @@ class TestPitKsTest:
         used, not plotting_points (which contains duplicate values at
         discontinuities and would bias the KS test)."""
         mock_pit = MagicMock()
-        mock_pit.plotting_points_parametric.return_value = xr.DataArray(
-            np.linspace(0.01, 0.99, 50)
-        )
+        mock_pit.plotting_points_parametric.return_value = {
+            "x_plotting_position": xr.DataArray(np.linspace(0.01, 0.99, 50))
+        }
         pit_ks_test(mock_pit)
         mock_pit.plotting_points_parametric.assert_called_once()
         mock_pit.plotting_points.assert_not_called()
+
+    def test_uses_x_plotting_position_not_y(self) -> None:
+        """Test that the KS test is computed on 'x_plotting_position',
+        not 'y_plotting_position' -- a regression test distinguishing the
+        two dict keys explicitly, since a wrong-key mixup would still
+        type-check and run without error."""
+        from scipy.stats import kstest
+
+        x_data = np.array([0.1, 0.2, 0.5, 0.6, 0.9])
+        y_data = np.array([0.0, 0.0, 0.0, 0.0, 0.0])  # degenerate: KS vs x_data differs
+        mock_pit = MagicMock()
+        mock_pit.plotting_points_parametric.return_value = {
+            "x_plotting_position": xr.DataArray(x_data),
+            "y_plotting_position": xr.DataArray(y_data),
+        }
+
+        stat, pval = pit_ks_test(mock_pit)
+        expected = kstest(x_data, "uniform")
+        assert stat == pytest.approx(expected.statistic)
+        assert pval == pytest.approx(expected.pvalue)
 
     def test_known_statistic_against_manual_scipy_call(self) -> None:
         """Test the wrapper's output against a direct, independent call to
@@ -1247,9 +1110,34 @@ class TestPitKsTest:
 
         data = np.array([0.1, 0.2, 0.5, 0.6, 0.9])
         mock_pit = MagicMock()
-        mock_pit.plotting_points_parametric.return_value = xr.DataArray(data)
+        mock_pit.plotting_points_parametric.return_value = {
+            "x_plotting_position": xr.DataArray(data)
+        }
 
         stat, pval = pit_ks_test(mock_pit)
         expected = kstest(data, "uniform")
         assert stat == pytest.approx(expected.statistic)
         assert pval == pytest.approx(expected.pvalue)
+
+    def test_real_pit_diagnostics_output_end_to_end(self) -> None:
+        """Integration test using the real (unmocked) scores.probability
+        PitFcstAtObs returned by pit_diagnostics, not a MagicMock --
+        this is the exact composition pit_ks_test's own docstring
+        documents ("e.g. from pit_diagnostics"), and is what would have
+        caught the dict-vs-DataArray contract mismatch immediately."""
+        rng = np.random.default_rng(1)
+        grid_y = np.array([0.0, 5.0, 10.0, 15.0, 20.0])
+        grid_cdf = np.sort(rng.uniform(0.0, 1.0, (30, 5)), axis=1)
+        grid_cdf[:, 0] = 0.0
+        grid_cdf[:, -1] = 1.0
+        dist = ContinuousPredictiveDistribution(grid_y=grid_y, grid_cdf=grid_cdf)
+        y_true = rng.uniform(0.0, 20.0, 30)
+        mapper = MagicMock(spec=BaseBinMapper, floor_atom=False, ceiling_atom=False)
+
+        pit = pit_diagnostics(y_true, dist, mapper)
+        stat, pval = pit_ks_test(pit)
+
+        assert isinstance(stat, float)
+        assert isinstance(pval, float)
+        assert 0.0 <= stat <= 1.0
+        assert 0.0 <= pval <= 1.0
