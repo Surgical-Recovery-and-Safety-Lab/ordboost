@@ -28,6 +28,7 @@ dependencies = [
 dev = [
   "pytest>=7.0.0",
   "pytest-cov>=4.0.0",
+  "ruff>=0.16.0",
   "ordboost[docs]",
 ]
 docs = [
@@ -73,10 +74,21 @@ select = [
 ignore = [
   "D100",  # Missing docstring in public module
   "D104",  # Missing docstring in public package
+  "D205",  # 1 blank line required between summary and description: this
+           # codebase's convention is a flowing multi-line summary
+           # instead of numpydoc's strict one-line-summary split.
 ]
 
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"
+
+[tool.ruff.lint.pep8-naming]
+# scikit-learn's own convention capitalizes the feature-matrix argument/
+# variable (X, X_arr, X_train, X_test, ...) to visually distinguish a 2D
+# matrix from a 1D target vector -- matching sklearn's public API (e.g.
+# fit(self, X, y)) rather than plain PEP 8. Allow that pattern, and the
+# handful of test names that spell it out in prose (test_fit_nan_in_X_...).
+extend-ignore-names = ["X", "X_*", "*_X_*"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
