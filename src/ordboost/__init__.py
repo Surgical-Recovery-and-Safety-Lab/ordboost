@@ -28,7 +28,7 @@ from ordboost.metrics import (
 )
 from ordboost.models import OrdBoostClassifier, OrdBoostRegressor
 
-__version__ = "0.3.1"
+__version__ = "0.4.0"
 
 __all__ = [
     # Models

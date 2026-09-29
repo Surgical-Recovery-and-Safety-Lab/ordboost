@@ -83,7 +83,9 @@ class TestIntraBinPoints:
     def test_single_value_at_boundary(self) -> None:
         """Test the edge case where all of a bin's data sits exactly at
         its own lower boundary: the mean equals the boundary, and the
-        weight is 1.0 since all data is at or below it.
+        weight is 0.0 since no data is strictly below it (so the bin
+        becomes a straight ramp from k to k + 1, per the fraction-below
+        convention matching the grid CDF's P(Y < edge) semantics).
         """
         mapper = EmpiricalMeanBinMapper()
         bin_data = np.array([10.0])
@@ -94,7 +96,7 @@ class TestIntraBinPoints:
             k=0,
         )
         assert points[0] == pytest.approx(10.0)
-        assert weights[0] == pytest.approx(1.0)
+        assert weights[0] == pytest.approx(0.0)
 
     def test_mean_is_clipped_to_bin_range(self) -> None:
         """Test that the computed mean is clipped to [low, high], guarding

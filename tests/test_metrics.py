@@ -554,8 +554,9 @@ class TestMarginalCalibrationCurve:
         grid_y = np.array([0.0, 5.0, 10.0])
         grid_cdf = np.array([[0.0, 0.5, 1.0]])
         dist = ContinuousPredictiveDistribution(grid_y=grid_y, grid_cdf=grid_cdf)
+        mapper = MagicMock(spec=BaseBinMapper, floor_atom=False, ceiling_atom=False)
 
-        returned_grid_y, _ = marginal_calibration_curve(np.array([5.0]), dist)
+        returned_grid_y, _ = marginal_calibration_curve(np.array([5.0]), dist, mapper)
         np.testing.assert_array_equal(returned_grid_y, grid_y)
 
     def test_calibration_matches_hand_computation(self) -> None:
@@ -563,16 +564,19 @@ class TestMarginalCalibrationCurve:
 
         grid_y = [0, 5, 10], two samples with grid_cdf rows [0, 0.5, 1]
         and [0, 0.3, 1] -> mean_cdf = [0, 0.4, 1].
-        y_true = [3, 8] -> empirical_cdf at each grid point:
-          y<=0: 0/2=0.0; y<=5: 1/2=0.5 (only 3<=5); y<=10: 2/2=1.0
+        y_true = [3, 8] -> empirical_cdf at each grid point (strict '<',
+        but neither y_true value ties a grid_y point here so the result
+        is the same as an inclusive comparison would give):
+          y<0: 0/2=0.0; y<5: 1/2=0.5 (only 3<5); y<10: 2/2=1.0
         calibration = empirical_cdf - mean_cdf = [0.0, 0.1, 0.0]
         """
         grid_y = np.array([0.0, 5.0, 10.0])
         grid_cdf = np.array([[0.0, 0.5, 1.0], [0.0, 0.3, 1.0]])
         dist = ContinuousPredictiveDistribution(grid_y=grid_y, grid_cdf=grid_cdf)
         y_true = np.array([3.0, 8.0])
+        mapper = MagicMock(spec=BaseBinMapper, floor_atom=False, ceiling_atom=False)
 
-        _, calibration = marginal_calibration_curve(y_true, dist)
+        _, calibration = marginal_calibration_curve(y_true, dist, mapper)
         np.testing.assert_allclose(calibration, [0.0, 0.1, 0.0], atol=1e-9)
 
     def test_perfectly_matched_calibration_is_zero(self) -> None:
@@ -583,9 +587,10 @@ class TestMarginalCalibrationCurve:
         grid_cdf = np.array([[0.0, 1.0], [0.0, 1.0]])  # mean_cdf = [0.0, 1.0]
         dist = ContinuousPredictiveDistribution(grid_y=grid_y, grid_cdf=grid_cdf)
         # true values chosen so empirical CDF at grid_y is also [0.0, 1.0]
-        y_true = np.array([5.0, 8.0])  # none <= 0, both <= 10
+        y_true = np.array([5.0, 8.0])  # none < 0, both < 10
+        mapper = MagicMock(spec=BaseBinMapper, floor_atom=False, ceiling_atom=False)
 
-        _, calibration = marginal_calibration_curve(y_true, dist)
+        _, calibration = marginal_calibration_curve(y_true, dist, mapper)
         np.testing.assert_allclose(calibration, [0.0, 0.0], atol=1e-9)
 
     def test_negative_calibration_indicates_overprediction(self) -> None:
@@ -597,8 +602,9 @@ class TestMarginalCalibrationCurve:
         grid_cdf = np.array([[0.0, 0.9, 1.0]])  # model claims 90% mass by y=5
         dist = ContinuousPredictiveDistribution(grid_y=grid_y, grid_cdf=grid_cdf)
         y_true = np.array([8.0])  # empirical_cdf(5) = 0.0 -- true value is above 5
+        mapper = MagicMock(spec=BaseBinMapper, floor_atom=False, ceiling_atom=False)
 
-        _, calibration = marginal_calibration_curve(y_true, dist)
+        _, calibration = marginal_calibration_curve(y_true, dist, mapper)
         assert calibration[1] < 0.0  # 0.0 - 0.9 = -0.9
 
     def test_output_length_matches_grid_y(self) -> None:
@@ -607,8 +613,9 @@ class TestMarginalCalibrationCurve:
         grid_cdf = np.tile(np.linspace(0.0, 1.0, 5), (3, 1))
         dist = ContinuousPredictiveDistribution(grid_y=grid_y, grid_cdf=grid_cdf)
         y_true = np.array([1.0, 3.0, 7.0])
+        mapper = MagicMock(spec=BaseBinMapper, floor_atom=False, ceiling_atom=False)
 
-        returned_grid_y, calibration = marginal_calibration_curve(y_true, dist)
+        returned_grid_y, calibration = marginal_calibration_curve(y_true, dist, mapper)
         assert len(returned_grid_y) == 5
         assert len(calibration) == 5
 
@@ -623,22 +630,64 @@ class TestMarginalCalibrationCurve:
         # mean_cdf at grid_y[1] = (3*0.5 + 0.75)/4 = 0.5625
         dist = ContinuousPredictiveDistribution(grid_y=grid_y, grid_cdf=grid_cdf)
         y_true = np.array([-1.0, -1.0, -1.0, -1.0])  # empirical_cdf(10) = 1.0
+        mapper = MagicMock(spec=BaseBinMapper, floor_atom=False, ceiling_atom=False)
 
-        _, calibration = marginal_calibration_curve(y_true, dist)
+        _, calibration = marginal_calibration_curve(y_true, dist, mapper)
         assert calibration[1] == pytest.approx(1.0 - 0.5625)
 
     def test_single_sample(self) -> None:
         """Test that the function works correctly for a single-sample
         distribution (mean over one row is that row itself).
+
+        y_true's one value (5.0) exactly ties grid_y[1] (5.0). Under the
+        strict '<' empirical CDF, a tied observation is *not* counted at
+        that point (mean(5.0 < 5.0) = 0.0), unlike the old inclusive '<='
+        convention which would have counted it.
         """
         grid_y = np.array([0.0, 5.0, 10.0])
         grid_cdf = np.array([[0.0, 0.6, 1.0]])
         dist = ContinuousPredictiveDistribution(grid_y=grid_y, grid_cdf=grid_cdf)
         y_true = np.array([5.0])
+        mapper = MagicMock(spec=BaseBinMapper, floor_atom=False, ceiling_atom=False)
 
-        _, calibration = marginal_calibration_curve(y_true, dist)
-        # empirical_cdf = [0.0, 1.0, 1.0]; mean_cdf = [0.0, 0.6, 1.0]
-        np.testing.assert_allclose(calibration, [0.0, 0.4, 0.0], atol=1e-9)
+        _, calibration = marginal_calibration_curve(y_true, dist, mapper)
+        # empirical_cdf = [0.0, 0.0, 1.0]; mean_cdf = [0.0, 0.6, 1.0]
+        np.testing.assert_allclose(calibration, [0.0, -0.6, 0.0], atol=1e-9)
+
+    def test_floor_atom_overrides_mean_cdf_left_limit(self) -> None:
+        """Test that floor_atom=True forces mean_cdf at the floor grid
+        point (index 1) to 0.0 -- its left-hand limit -- rather than the
+        grid's actual (atom-inclusive) average CDF value there.
+
+        Without the override, calibration[1] would be
+        empirical_cdf[1] - 0.4 = -0.4; with it, mean_cdf[1] is treated as
+        0.0, so calibration[1] == empirical_cdf[1] == 0.0.
+        """
+        grid_y = np.array([-0.0001, 0.0, 5.0, 10.0])
+        grid_cdf = np.array([[0.0, 0.4, 0.7, 1.0]])  # 0.4 = mass at the floor atom
+        dist = ContinuousPredictiveDistribution(grid_y=grid_y, grid_cdf=grid_cdf)
+        y_true = np.array([3.0])  # not at the floor
+        mapper = MagicMock(spec=BaseBinMapper, floor_atom=True, ceiling_atom=False)
+
+        _, calibration = marginal_calibration_curve(y_true, dist, mapper)
+        assert calibration[1] == pytest.approx(0.0)
+
+    def test_ceiling_atom_overrides_empirical_cdf_to_one(self) -> None:
+        """Test that ceiling_atom=True forces empirical_cdf at the last
+        grid point to exactly 1.0, correcting for the strict '<'
+        comparison undercounting a y_true value that ties the ceiling.
+
+        Without the override, empirical_cdf[-1] = mean(10.0 < 10.0) = 0.0,
+        giving calibration[-1] = -1.0; with it, calibration[-1] == 0.0.
+        """
+        grid_y = np.array([0.0, 5.0, 10.0])
+        grid_cdf = np.array([[0.0, 0.5, 1.0]])
+        dist = ContinuousPredictiveDistribution(grid_y=grid_y, grid_cdf=grid_cdf)
+        y_true = np.array([10.0])  # exactly at the ceiling
+        mapper = MagicMock(spec=BaseBinMapper, floor_atom=False, ceiling_atom=True)
+
+        _, calibration = marginal_calibration_curve(y_true, dist, mapper)
+        assert calibration[-1] == pytest.approx(0.0)
 
 
 class TestIntervalCoverageRate:
@@ -889,57 +938,124 @@ class TestPitDiagnostics:
         with pytest.raises(ValueError, match="Expected 'y_true' of shape"):
             pit_diagnostics(np.array([1.0, 2.0, 3.0]), sample_dist, mapper)
 
+    def test_zero_resolution_raises_value_error(self, sample_dist) -> None:
+        """Test that resolution=0.0 raises ValueError."""
+        mapper = MagicMock(spec=BaseBinMapper, floor_atom=False, ceiling_atom=False)
+        with pytest.raises(ValueError, match="'resolution' must be greater than 0"):
+            pit_diagnostics(np.array([2.0, 8.0]), sample_dist, mapper, resolution=0.0)
+
+    def test_negative_resolution_raises_value_error(self, sample_dist) -> None:
+        """Test that a negative resolution raises ValueError."""
+        mapper = MagicMock(spec=BaseBinMapper, floor_atom=False, ceiling_atom=False)
+        with pytest.raises(ValueError, match="'resolution' must be greater than 0"):
+            pit_diagnostics(np.array([2.0, 8.0]), sample_dist, mapper, resolution=-1.0)
+
     @patch("ordboost.metrics.PitFcstAtObs")
-    def test_no_atoms_fcst_left_equals_fcst_right(
+    def test_custom_resolution_changes_fcst_at_obs(
         self, mock_pit_cls, sample_dist
     ) -> None:
-        """Test that with both atom flags False, fcst_at_obs_left is
-        identical to fcst_at_obs everywhere (no discontinuity treatment
-        applied).
+        """Test that fcst_at_obs is evaluated at y + resolution for a
+        non-default resolution, not hardcoded to y + 1.0.
         """
         mapper = MagicMock(spec=BaseBinMapper, floor_atom=False, ceiling_atom=False)
-        pit_diagnostics(np.array([2.0, 8.0]), sample_dist, mapper, precision=None)
+        y_true = np.array([2.0, 8.0])
+        pit_diagnostics(y_true, sample_dist, mapper, precision=None, resolution=0.25)
 
         fcst_right = mock_pit_cls.call_args[0][0].values
         fcst_left = mock_pit_cls.call_args[1]["fcst_at_obs_left"].values
-        np.testing.assert_array_equal(fcst_left, fcst_right)
+
+        np.testing.assert_allclose(fcst_left, sample_dist.cdf(y_true))
+        np.testing.assert_allclose(fcst_right, sample_dist.cdf(y_true + 0.25))
+
+    @patch("ordboost.metrics.PitFcstAtObs")
+    def test_ceiling_atom_bin_directly_below_stops_at_atom_boundary(
+        self, mock_pit_cls, sample_dist
+    ) -> None:
+        """Test the bin whose interval [y, y + resolution) ends exactly at
+        the ceiling atom (but is not the atom itself): fcst_at_obs must be
+        clamped to the mass just below the ceiling, not spill into the
+        atom's own mass -- otherwise that bin's right edge would double
+        count probability that belongs to the atom.
+        """
+        mapper = MagicMock(spec=BaseBinMapper, floor_atom=False, ceiling_atom=True)
+        # sample 0's bin [9.0, 10.0) ends exactly at the ceiling (10.0);
+        # sample 0 itself is not at the ceiling.
+        y_true = np.array([9.0, 2.0])
+        pit_diagnostics(y_true, sample_dist, mapper, precision=None)
+
+        fcst_right = mock_pit_cls.call_args[0][0].values
+        just_below_ceiling = sample_dist.grid_cdf[:, -2]
+
+        assert fcst_right[0] == pytest.approx(just_below_ceiling[0])
+
+    @patch("ordboost.metrics.PitFcstAtObs")
+    def test_no_atoms_uses_plain_resolution_window(
+        self, mock_pit_cls, sample_dist
+    ) -> None:
+        """Test that with both atom flags False, fcst_at_obs_left/fcst_at_obs
+        are exactly F(y) and F(y + resolution), with no atom-driven
+        override -- not identical to each other, since the resolution
+        window itself makes them differ even without atoms.
+        """
+        mapper = MagicMock(spec=BaseBinMapper, floor_atom=False, ceiling_atom=False)
+        y_true = np.array([2.0, 8.0])
+        pit_diagnostics(y_true, sample_dist, mapper, precision=None)
+
+        fcst_right = mock_pit_cls.call_args[0][0].values
+        fcst_left = mock_pit_cls.call_args[1]["fcst_at_obs_left"].values
+
+        np.testing.assert_allclose(fcst_left, sample_dist.cdf(y_true))
+        np.testing.assert_allclose(fcst_right, sample_dist.cdf(y_true + 1.0))
 
     @patch("ordboost.metrics.PitFcstAtObs")
     def test_floor_atom_overwrites_only_matching_sample(
         self, mock_pit_cls, sample_dist
     ) -> None:
-        """Test that floor_atom=True forces fcst_at_obs_left to 0.0 only
-        for the sample whose y_true equals the floor value (grid_y[1]),
-        leaving other samples' fcst_at_obs_left equal to fcst_at_obs.
+        """Test that floor_atom=True forces the interval to [0, F(floor)]
+        only for the sample whose y_true equals the floor value (grid_y[1]),
+        leaving the other sample at its plain [F(y), F(y + resolution)]
+        resolution window.
         """
         mapper = MagicMock(spec=BaseBinMapper, floor_atom=True, ceiling_atom=False)
         # sample 0 is exactly at the floor value (0.0); sample 1 is not
-        pit_diagnostics(np.array([0.0, 8.0]), sample_dist, mapper, precision=None)
+        y_true = np.array([0.0, 8.0])
+        cdf_left = sample_dist.cdf(y_true)
+        cdf_right = sample_dist.cdf(y_true + 1.0)
+        pit_diagnostics(y_true, sample_dist, mapper, precision=None)
 
         fcst_right = mock_pit_cls.call_args[0][0].values
         fcst_left = mock_pit_cls.call_args[1]["fcst_at_obs_left"].values
 
         assert fcst_left[0] == 0.0
-        assert fcst_left[1] == pytest.approx(fcst_right[1])
+        assert fcst_right[0] == pytest.approx(
+            cdf_left[0]
+        )  # atom's own mass, not F(y+res)
+        assert fcst_left[1] == pytest.approx(cdf_left[1])
+        assert fcst_right[1] == pytest.approx(cdf_right[1])
 
     @patch("ordboost.metrics.PitFcstAtObs")
     def test_ceiling_atom_overwrites_only_matching_sample(
         self, mock_pit_cls, sample_dist
     ) -> None:
-        """Test that ceiling_atom=True sets fcst_at_obs_left, for the
-        sample whose y_true equals the ceiling value (grid_y[-1]), to
-        that sample's own near-ceiling grid_cdf value (column -2), while
-        other samples' fcst_at_obs_left is left equal to fcst_at_obs.
+        """Test that ceiling_atom=True sets the interval, for the sample
+        whose y_true equals the ceiling value (grid_y[-1]), to [mass
+        below the ceiling, 1.0], while the other sample keeps its plain
+        [F(y), F(y + resolution)] resolution window.
         """
         mapper = MagicMock(spec=BaseBinMapper, floor_atom=False, ceiling_atom=True)
         # sample 1 is exactly at the ceiling value (10.0); sample 0 is not
-        pit_diagnostics(np.array([2.0, 10.0]), sample_dist, mapper, precision=None)
+        y_true = np.array([2.0, 10.0])
+        cdf_left = sample_dist.cdf(y_true)
+        cdf_right = sample_dist.cdf(y_true + 1.0)
+        pit_diagnostics(y_true, sample_dist, mapper, precision=None)
 
         fcst_right = mock_pit_cls.call_args[0][0].values
         fcst_left = mock_pit_cls.call_args[1]["fcst_at_obs_left"].values
 
         assert fcst_left[1] == pytest.approx(sample_dist.grid_cdf[1, -2])  # 0.90
-        assert fcst_left[0] == pytest.approx(fcst_right[0])
+        assert fcst_right[1] == pytest.approx(1.0)
+        assert fcst_left[0] == pytest.approx(cdf_left[0])
+        assert fcst_right[0] == pytest.approx(cdf_right[0])
 
     @patch("ordboost.metrics.PitFcstAtObs")
     def test_both_atoms_applied_independently(self, mock_pit_cls, sample_dist) -> None:
@@ -962,14 +1078,17 @@ class TestPitDiagnostics:
     ) -> None:
         """Test that an object without floor_atom/ceiling_atom attributes
         is handled gracefully via getattr, defaulting to no atom
-        treatment rather than raising AttributeError.
+        treatment (plain resolution window) rather than raising
+        AttributeError.
         """
         bare_object = object()
-        pit_diagnostics(np.array([0.0, 10.0]), sample_dist, bare_object, precision=None)
+        y_true = np.array([0.0, 10.0])
+        pit_diagnostics(y_true, sample_dist, bare_object, precision=None)
 
         fcst_right = mock_pit_cls.call_args[0][0].values
         fcst_left = mock_pit_cls.call_args[1]["fcst_at_obs_left"].values
-        np.testing.assert_array_equal(fcst_left, fcst_right)
+        np.testing.assert_allclose(fcst_left, sample_dist.cdf(y_true))
+        np.testing.assert_allclose(fcst_right, sample_dist.cdf(y_true + 1.0))
 
     @patch("ordboost.metrics.PitFcstAtObs")
     def test_returns_pit_constructor_result(self, mock_pit_cls, sample_dist) -> None:
@@ -1012,20 +1131,22 @@ class TestPitDiagnosticsPrecision:
         decimal places.
         """
         mapper = MagicMock(spec=BaseBinMapper, floor_atom=False, ceiling_atom=False)
-        pit_diagnostics(np.array([2.0, 8.0]), sample_dist, mapper)
+        y_true = np.array([2.0, 8.0])
+        pit_diagnostics(y_true, sample_dist, mapper)
 
         fcst_right = mock_pit_cls.call_args[0][0].values
-        expected = np.round(sample_dist.cdf(np.array([2.0, 8.0])), 2)
+        expected = np.round(sample_dist.cdf(y_true + 1.0), 2)  # F(y + resolution)
         np.testing.assert_array_equal(fcst_right, expected)
 
     @patch("ordboost.metrics.PitFcstAtObs")
     def test_precision_none_disables_rounding(self, mock_pit_cls, sample_dist) -> None:
         """Test that precision=None leaves fcst_at_obs at full precision."""
         mapper = MagicMock(spec=BaseBinMapper, floor_atom=False, ceiling_atom=False)
-        pit_diagnostics(np.array([2.0, 8.0]), sample_dist, mapper, precision=None)
+        y_true = np.array([2.0, 8.0])
+        pit_diagnostics(y_true, sample_dist, mapper, precision=None)
 
         fcst_right = mock_pit_cls.call_args[0][0].values
-        expected = sample_dist.cdf(np.array([2.0, 8.0]))
+        expected = sample_dist.cdf(y_true + 1.0)  # F(y + resolution)
         np.testing.assert_array_equal(fcst_right, expected)
 
     def test_bool_precision_raises_type_error(self, sample_dist) -> None:
