@@ -324,7 +324,7 @@ def pinball_loss_skill_score(
 
 
 def marginal_calibration_curve(
-    y_true: ArrayLike, dist: ContinuousPredictiveDistribution
+    y_true: ArrayLike, dist: ContinuousPredictiveDistribution, mapper: BaseBinMapper
 ) -> tuple[np.ndarray, np.ndarray]:
     """Compute the difference between the empirical CDF and the average CDF.
 
@@ -334,6 +334,11 @@ def marginal_calibration_curve(
         True continuous target values.
     dist : ContinuousPredictiveDistribution
         Predicted continuous distributions.
+    mapper : BaseBinMapper
+        The (fitted or unfitted) mapper instance whose `floor_atom` and
+        `ceiling_atom` flags determine which grid points are treated as
+        atoms. Only these two boolean attributes are read; the mapper
+        does not need to be fitted.
 
     Returns
     -------
@@ -347,7 +352,12 @@ def marginal_calibration_curve(
     grid_y = dist.grid_y
 
     mean_cdf = dist.grid_cdf.mean(axis=0)
-    empirical_cdf = np.array([np.mean(y_true_arr <= x) for x in grid_y])
+    empirical_cdf = np.array([np.mean(y_true_arr < x) for x in grid_y])
+
+    if getattr(mapper, "floor_atom", False):
+        mean_cdf[1] = 0.0  # left-hand limit at the floor atom
+    if getattr(mapper, "ceiling_atom", False):
+        empirical_cdf[-1] = 1  # by convention
 
     return grid_y, empirical_cdf - mean_cdf
 
