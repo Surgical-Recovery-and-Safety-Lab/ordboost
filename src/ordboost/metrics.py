@@ -494,20 +494,25 @@ def pit_diagnostics(
     dist: ContinuousPredictiveDistribution,
     mapper: BaseBinMapper,
     precision: Union[int, None] = 2,
+    resolution: float = 1.0,
 ) -> PitFcstAtObs:
     """Construct exact PIT diagnostics using only per-sample scalars
     (O(n_samples)), not the full CDF grid (O(n_samples * n_grid_points)).
 
-    Computes F(y_true) and its left-hand limit F(y_true-) directly via
-    dist.cdf(), rather than handing the entire grid_cdf array to `Pit`'s
-    threshold-dimension mode.
-    The data from the distribution is rounded to the given precision, to
-    avoid memory issues for large datasets, unless precision is `None`.
+    Each observation `y` is treated as the half-open bin ``[y, y + resolution)``,
+    so its PIT value is uniform on ``[F(y), F(y + resolution)]``, where the
+    CDF values are evaluated directly via `dist.cdf()`, rather than handing
+    the entire grid_cdf array to `Pit`'s threshold-dimension mode. Atoms at
+    the floor and ceiling are handled separately, since they are point masses
+    and not bins. The data from the distribution is rounded to the given
+    precision, to avoid memory issues for large datasets, unless precision is
+    `None`.
 
     Parameters
     ----------
     y_true : ArrayLike of shape (n_samples,)
-        True continuous target values.
+        True target values, quantized to multiples of `resolution`
+        (e.g. integer days).
     dist : ContinuousPredictiveDistribution
         Predicted continuous distributions, with `grid_y`/`grid_cdf`
         constructed by `mapper`.
@@ -517,9 +522,12 @@ def pit_diagnostics(
         atoms. Only these two boolean attributes are read; the mapper
         does not need to be fitted.
     precision : int or None, default=2
-        Number of decimal places to round `fcst_at_obs`/`fcst_at_obs_left`
-        to before constructing `PitFcstAtObs`.
-        Pass `None` to disable rounding entirely.
+        Number of decimal places to round the PIT bounds to before
+        constructing `PitFcstAtObs`. Pass `None` to disable rounding
+        entirely.
+    resolution : float, default=1.0
+        Width of the interval represented by each observed value, i.e. the
+        quantization step of the target (1.0 for integer-valued outcomes).
 
     Returns
     -------
@@ -533,8 +541,8 @@ def pit_diagnostics(
     ------
     ValueError
         If `y_true`'s length does not match `dist.grid_cdf`'s sample
-        count, or if `precision` is not None and is not strictly
-        positive.
+        count, if `precision` is not None and is not strictly positive,
+        or if `resolution` is not strictly positive.
     TypeError
         If `precision` is not None and is not an integer.
 
@@ -547,6 +555,8 @@ def pit_diagnostics(
             )
         if precision <= 0:
             raise ValueError(f"'precision' must be greater than 0, got {precision}.")
+    if resolution <= 0.0:
+        raise ValueError(f"'resolution' must be greater than 0, got {resolution}.")
 
     y_true_arr = np.asarray(y_true, dtype=float)
     n_samples = dist.grid_cdf.shape[0]
@@ -556,19 +566,32 @@ def pit_diagnostics(
             f"got shape {y_true_arr.shape}."
         )
 
-    fcst_at_obs = dist.cdf(y_true_arr)
-    fcst_at_obs_left = fcst_at_obs.copy()
+    # Interval [F(y), F(y + resolution)] for an observation in the bin [y, y + r)
+    cdf_at_y = dist.cdf(y_true_arr)
+    fcst_at_obs_left = cdf_at_y.copy()
+    fcst_at_obs = dist.cdf(y_true_arr + resolution)
 
     if getattr(mapper, "floor_atom", False):
         floor_value = dist.grid_y[1]
         at_floor = np.isclose(y_true_arr, floor_value)
-        fcst_at_obs_left[at_floor] = 0.0  # nothing lies below the true floor
+        # The atom is a point mass, not a bin: interval is [0, mass at floor]
+        fcst_at_obs_left[at_floor] = 0.0
+        fcst_at_obs[at_floor] = cdf_at_y[at_floor]
 
     if getattr(mapper, "ceiling_atom", False):
         ceiling_value = dist.grid_y[-1]
+        # per-sample value just before the ceiling atom
+        just_below_ceiling = dist.grid_cdf[:, -2]
+        # bin directly below the atom must stop before the atom's mass
+        below_ceiling = np.isclose(y_true_arr + resolution, ceiling_value)
+        fcst_at_obs[below_ceiling] = just_below_ceiling[below_ceiling]
+        # the atom itself: interval is [mass below ceiling, 1]
         at_ceiling = np.isclose(y_true_arr, ceiling_value)
-        # per-sample value just before the ceiling, for atom samples only
-        fcst_at_obs_left[at_ceiling] = dist.grid_cdf[at_ceiling, -2]
+        fcst_at_obs_left[at_ceiling] = just_below_ceiling[at_ceiling]
+        fcst_at_obs[at_ceiling] = 1.0
+
+    fcst_at_obs_left = np.clip(fcst_at_obs_left, 0.0, 1.0)
+    fcst_at_obs = np.clip(np.maximum(fcst_at_obs, fcst_at_obs_left), 0.0, 1.0)
 
     if precision is not None:
         fcst_at_obs = np.round(fcst_at_obs, precision)
