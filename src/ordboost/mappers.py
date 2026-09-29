@@ -762,14 +762,20 @@ class QuantileBinMapper(BaseBinMapper):
             between `low` and `high` at each quantile level if `bin_data`
             is empty.
         weights : ndarray of shape (n_quantiles,)
-            `quantiles_` offset into bin-index units (``k + quantiles_``).
+            ``k`` plus the empirical fraction of `bin_data` strictly below
+            each point, so tied values receive the weight of the bin's
+            lower edge instead of the nominal quantile level. Falls back
+            to ``k + quantiles_`` if `bin_data` is empty.
 
         """
         if len(bin_data) == 0:
             pts = low + (high - low) * self.quantiles_
-        else:
-            pts = np.clip(np.quantile(bin_data, self.quantiles_), low, high)
-        return pts, k + self.quantiles_
+            return pts, k + self.quantiles_
+
+        pts = np.clip(np.quantile(bin_data, self.quantiles_), low, high)
+        sorted_data = np.sort(bin_data)
+        fractions = np.searchsorted(sorted_data, pts, side="left") / len(sorted_data)
+        return pts, k + fractions
 
 
 class UniformBinMapper(BaseBinMapper):
