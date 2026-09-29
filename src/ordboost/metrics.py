@@ -613,7 +613,7 @@ def pit_diagnostics(
     return PitFcstAtObs(fcst_da, fcst_at_obs_left=fcst_left_da)
 
 
-def pit_ks_test(pit: Pit) -> tuple[float, float]:
+def pit_ks_test(pit: PitFcstAtObs | Pit) -> tuple[float, float]:
     """Compute a Kolmogorov-Smirnov test of PIT uniformity.
 
     Convenience wrapper around `scipy.stats.kstest`, using `pit`'s
@@ -623,7 +623,7 @@ def pit_ks_test(pit: Pit) -> tuple[float, float]:
 
     Parameters
     ----------
-    pit : scores.probability.Pit
+    pit : PitFcstAtObs | Pit
         A fitted `Pit` object, e.g. from `pit_diagnostics`.
 
     Returns
