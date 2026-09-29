@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to Semantic Versioning ([SemVer](https://semver.org/spec/v2.0.0.html)).
 
+## [0.4.0]  2026-09-29
+
+### Fixed
+* Issue with the CDF grid weights. The CDF computes P(Y < edge) for each bin edge
+and the weights now reflect that.
+* Marginal calibration computations use a strict inequality and handle atoms.
+* The PIT histogram plot function now uses bin-interval bounds.
+* Fixed the type of the `pit_ks_test` function to include `PitFcstAtObs`.
+* Tests that failed because of the fixes.
+
+### Added
+* The `marginal_calibration_curve` function has a mapper parameter to handle the 
+atoms.
+* The `pit_diagnostics` function has a `resolution` parameter to compute the correct
+bounds.
+* New tests to cover the new behaviours.
+
 ## [0.3.1]  2026-09-12
 
 ### Added
@@ -146,6 +163,8 @@ contains the code for interval evaluation example.
 * Unit tests
 * Github workflow to run tests on push and pull request
 
+[Unreleased]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.3.1...v0.4.0
 [Unreleased]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.3.1...HEAD
 [0.3.1]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.3.0.dev0...v0.3.0
