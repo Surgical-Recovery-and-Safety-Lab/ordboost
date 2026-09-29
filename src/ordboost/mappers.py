@@ -554,7 +554,7 @@ class EmpiricalMeanBinMapper(BaseBinMapper):
             The bin's empirical mean, clipped to ``[low, high]``. Falls
             back to the geometric midpoint if `bin_data` is empty.
         weights : ndarray of shape (1,)
-            The empirical fraction of `bin_data` at or below the mean,
+            The empirical fraction of `bin_data` below the mean,
             offset into bin-index units (``k + fraction``). Falls back to
             0.5 if `bin_data` is empty.
 
@@ -564,7 +564,7 @@ class EmpiricalMeanBinMapper(BaseBinMapper):
             frac_below = 0.5
         else:
             mean_val = float(np.clip(np.mean(bin_data), low, high))
-            frac_below = float(np.mean(bin_data <= mean_val))
+            frac_below = float(np.mean(bin_data < mean_val))
         return np.array([mean_val]), np.array([k + frac_below])
 
 
@@ -620,7 +620,7 @@ class EmpiricalMedianBinMapper(BaseBinMapper):
             The bin's empirical median, clipped to ``[low, high]``. Falls
             back to the geometric midpoint if `bin_data` is empty.
         weights : ndarray of shape (1,)
-            The empirical fraction of `bin_data` at or below the median,
+            The empirical fraction of `bin_data` below the median,
             offset into bin-index units (``k + fraction``). Falls back to
             0.5 if `bin_data` is empty.
 
@@ -630,7 +630,7 @@ class EmpiricalMedianBinMapper(BaseBinMapper):
             frac_below = 0.5
         else:
             median_val = float(np.clip(np.median(bin_data), low, high))
-            frac_below = float(np.mean(bin_data <= median_val))
+            frac_below = float(np.mean(bin_data < median_val))
         return np.array([median_val]), np.array([k + frac_below])
 
     def transform(self, pmf: ArrayLike):
@@ -1015,7 +1015,7 @@ class ContinuousBinMapper(BaseBinMapper):
             apart. Empty if the bin's width is smaller than `resolution_`.
         weights : ndarray
             Cumulative weights aligned with `points`, in bin-index units:
-            the empirical fraction of `bin_data` at or below each point
+            the empirical fraction of `bin_data` below each point
             if `density_weighted=True` (falling back to uniform linear
             interpolation for an empty bin), or uniform linear
             interpolation across the bin's width if `density_weighted`
@@ -1044,7 +1044,7 @@ class ContinuousBinMapper(BaseBinMapper):
             return points, np.array([])
 
         if self.density_weighted and len(bin_data) > 0:
-            weights = k + np.array([np.mean(bin_data <= p) for p in points])
+            weights = k + np.array([np.mean(bin_data < p) for p in points])
         else:
             weights = k + (points - low) / (high - low)
 
