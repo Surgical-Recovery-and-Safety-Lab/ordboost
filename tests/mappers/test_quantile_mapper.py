@@ -110,15 +110,36 @@ class TestIntraBinPoints:
         expected = np.quantile(bin_data, [0.25, 0.5, 0.75])
         np.testing.assert_allclose(points, expected)
 
-    def test_weights_equal_quantile_levels_offset_by_bin_index(self) -> None:
-        """Test that weights are exactly k + quantile_level, not empirically
-        derived from the data.
+    def test_weights_reflect_empirical_fraction_strictly_below_point(self) -> None:
+        """Test that weights are k + the empirical fraction of bin_data
+        strictly below each computed point, not the nominal quantile
+        level -- these generally differ once the quantile point is
+        computed by interpolating between two data values, since
+        `np.searchsorted` counts actual data below the interpolated
+        point rather than assuming the nominal probability level applies
+        exactly.
         """
         mapper = QuantileBinMapper(quantiles=(0.25, 0.5, 0.75))
         mapper._validate_intra_bin_params()
         bin_data = np.array([10.0, 12.0, 14.0, 16.0, 18.0, 20.0])
         _, weights = mapper._intra_bin_points(bin_data, low=10.0, high=20.0, k=3)
-        np.testing.assert_allclose(weights, np.array([3.25, 3.5, 3.75]))
+        # points = [12.5, 15.0, 17.5]; 2, 3, 4 of the 6 values are strictly
+        # below each respectively -> fractions 1/3, 1/2, 2/3.
+        np.testing.assert_allclose(weights, np.array([3 + 1 / 3, 3.5, 3 + 2 / 3]))
+
+    def test_single_element_bin_weight_matches_empirical_fraction(self) -> None:
+        """Regression test for a bug where a single-element bin's weight
+        was assigned the nominal quantile level (e.g. 0.9 for the 90th
+        percentile point) even though none of that bin's one data point
+        can be strictly below itself, overstating the weight by exactly
+        the nominal level (0.9 too great in the reported case).
+        """
+        mapper = QuantileBinMapper(quantiles=(0.1, 0.5, 0.9))
+        mapper._validate_intra_bin_params()
+        bin_data = np.array([15.0])
+        points, weights = mapper._intra_bin_points(bin_data, low=10.0, high=20.0, k=0)
+        np.testing.assert_allclose(points, np.array([15.0, 15.0, 15.0]))
+        np.testing.assert_allclose(weights, np.array([0.0, 0.0, 0.0]))
 
     def test_empty_bin_interpolates_linearly(self) -> None:
         """Test that an empty bin falls back to linear interpolation
@@ -202,11 +223,16 @@ class TestFitIntegration:
         # bin 2 spans [10, 11) with all its data at the shared edge y=10.0
         mapper.fit(np.array([1.0, 10.0, 10.0, 10.0, 10.0, 15.0]))
 
-        # Colliding weights at y=10.0: bin 1's boundary (1.0) and bin 2's
-        # three quantile points (1.25, 1.5, 1.75) -- max should win.
+        # Colliding weights at y=10.0: bin 1's boundary (weight 2.0) and bin
+        # 2's three quantile points, all at 10.0 with weight 2.0 too, since
+        # none of bin 2's own data (all four values equal 10.0) is strictly
+        # below 10.0 -- every candidate weight here is 2.0, so dedup leaves
+        # 2.0 rather than the old (pre-fix) nominal-quantile-level values of
+        # 2.25/2.5/2.75, which assumed data below the point regardless of
+        # actual ties.
         idx = np.searchsorted(mapper.grid_y_, 10.0)
         assert mapper.grid_y_[idx] == pytest.approx(10.0)
-        assert mapper.grid_cdf_weights_[idx] == pytest.approx(2.75)
+        assert mapper.grid_cdf_weights_[idx] == pytest.approx(2.0)
 
     def test_zero_width_bin_from_degenerate_data_does_not_raise(self) -> None:
         """Test that a bin whose resolved range collapses to a single point

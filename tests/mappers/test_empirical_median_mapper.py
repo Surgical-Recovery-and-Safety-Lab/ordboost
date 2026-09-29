@@ -36,16 +36,17 @@ class TestIntraBinPoints:
         assert points[0] != pytest.approx(15.0)  # would be the midpoint
 
     def test_odd_length_weight_reflects_median_as_data_point(self) -> None:
-        """Test that for an odd-length bin, the weight exceeds 0.5, since
-        the median is itself an observed value and is included in the
-        at-or-below count -- not a bug, but an inherent property of
-        odd-count empirical medians under an inclusive comparison.
+        """Test that for an odd-length bin, the weight falls short of 0.5,
+        since the median is itself an observed value and is excluded from
+        the strictly-below count -- not a bug, but an inherent property of
+        odd-count empirical medians under an exclusive comparison (weight
+        equals the grid CDF's P(Y < median) convention).
         """
         mapper = EmpiricalMedianBinMapper()
         bin_data = np.array([10.5, 11.0, 12.0, 13.0, 19.0])  # median = 12.0
-        # 3 of 5 values (10.5, 11.0, 12.0) are <= 12.0
+        # 2 of 5 values (10.5, 11.0) are strictly < 12.0
         _, weights = mapper._intra_bin_points(bin_data, low=10.0, high=20.0, k=0)
-        assert weights[0] == pytest.approx(0.6)
+        assert weights[0] == pytest.approx(0.4)
 
     def test_even_length_distinct_values_gives_weight_of_half(self) -> None:
         """Test that for an even-length bin with no value equal to the
@@ -85,7 +86,8 @@ class TestIntraBinPoints:
     def test_single_value_at_boundary(self) -> None:
         """Test the edge case where all of a bin's data sits exactly at
         its own lower boundary: the median equals the boundary, and the
-        weight is 1.0 since all data is at or below it.
+        weight is 0.0 since no data is strictly below it (so the bin
+        becomes a straight ramp from k to k + 1).
         """
         mapper = EmpiricalMedianBinMapper()
         bin_data = np.array([10.0])
@@ -96,7 +98,7 @@ class TestIntraBinPoints:
             k=0,
         )
         assert points[0] == pytest.approx(10.0)
-        assert weights[0] == pytest.approx(1.0)
+        assert weights[0] == pytest.approx(0.0)
 
     def test_median_is_clipped_to_bin_range(self) -> None:
         """Test that the computed median is clipped to [low, high]."""
@@ -140,7 +142,7 @@ class TestFitIntegration:
 
         median_idx = np.searchsorted(mapper.grid_y_, 12.0)
         assert mapper.grid_y_[median_idx] == pytest.approx(12.0)
-        assert mapper.grid_cdf_weights_[median_idx] == pytest.approx(0.6)
+        assert mapper.grid_cdf_weights_[median_idx] == pytest.approx(0.4)
 
 
 class TestTransformIntegration:
