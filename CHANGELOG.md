@@ -5,7 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to Semantic Versioning ([SemVer](https://semver.org/spec/v2.0.0.html)).
 
-## [0.4.0]  2026-09-29
+## [0.5.0] - 2026-10-14
+
+### Changed
+* The interval coverage function now has a tolerance that can be added to account 
+for the presence of atoms.
+
+### Fixed
+* Examples that called the marginal calibration, interval coverage, and PIT 
+histogram functions that needed new parameters.
+
+## [0.4.0] - 2026-09-29
 
 ### Fixed
 * Issue with the CDF grid weights. The CDF computes P(Y < edge) for each bin edge
@@ -22,7 +32,7 @@ atoms.
 bounds.
 * New tests to cover the new behaviours.
 
-## [0.3.1]  2026-09-12
+## [0.3.1] - 2026-09-12
 
 ### Added
 * Improved test coverage for the mappers.
@@ -38,7 +48,7 @@ bounds.
 * Formatting and linting bugs in the code.
 
 
-## [0.3.0] 2026-09-10
+## [0.3.0] - 2026-09-10
 
 ### Added
 * Split the examples into sections to make it more readable.
@@ -68,7 +78,7 @@ contains the code for interval evaluation example.
 ### Removed
 * Removed `examples.md`.
 
-## [0.3.0.dev0] 2026-09-19
+## [0.3.0.dev0] - 2026-09-19
 
 ### Added
 * **BREAKING** UniformBinMapper accepts n_points to define the number of midpoints to add.
@@ -102,7 +112,7 @@ contains the code for interval evaluation example.
 ### Fixed
 * Fixed checks in the models to correspond to the docstrings.
 
-## [0.2.1] 2026-08-19
+## [0.2.1] - 2026-08-19
 
 ### Added
 * Documentation deployed with MkDocs.
@@ -118,7 +128,7 @@ contains the code for interval evaluation example.
 ### Fixed
 * Minor typo in the OrdBoostClassifier example.
 
-## [0.2.0] 2026-08-18
+## [0.2.0] - 2026-08-18
 
 ### Changed
 * **BREAKING** Renamed PredictiveDistribution class to DiscretePredictiveDistribution.
@@ -163,9 +173,9 @@ contains the code for interval evaluation example.
 * Unit tests
 * Github workflow to run tests on push and pull request
 
-[Unreleased]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.5.0...HEAD
+[v0.5.0]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.3.1...v0.4.0
-[Unreleased]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.3.1...HEAD
 [0.3.1]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.3.0.dev0...v0.3.0
 [0.3.0.dev0]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v.0.2.1...v0.3.0.dev0

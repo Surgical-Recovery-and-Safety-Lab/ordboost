@@ -121,7 +121,12 @@ coverage_levels = np.arange(10, 91, 10)  # nominal coverage in percent
 alphas = 1.0 - coverage_levels / 100.0
 
 empirical_coverage = np.array(
-    [interval_coverage_rate(y_test, dist_test, alpha=a) for a in alphas]
+    [
+        interval_coverage_rate(
+            y_test, dist_test, alpha=a, tolerance=model.mapper_.boundary_epsilon
+        )
+        for a in alphas
+    ]
 )
 interval_sharpness = np.array([sharpness(dist_test, alpha=a) for a in alphas])
 winkler = np.array([winkler_score(y_test, dist_test, alpha=a) for a in alphas])
@@ -193,9 +198,9 @@ plt.show()
 
 # Marginal calibration: aggregate comparison of the empirical CDF against
 # the average predicted CDF across all test samples.
-grid_y, calibration = marginal_calibration_curve(y_test, dist_test)
+grid_y, calibration = marginal_calibration_curve(y_test, dist_test, model.mapper_)
 grid_y_no_bounds, calibration_no_bounds = marginal_calibration_curve(
-    y_test, dist_test_no_bounds
+    y_test, dist_test_no_bounds, model_no_bounds.mapper_
 )
 
 fig, ax = plt.subplots(figsize=(7, 5))
@@ -218,7 +223,7 @@ plt.show()
 # floor atom via model.mapper_.floor_atom (True here) and correctly
 # treating the ceiling as a plain boundary rather than an atom, since
 # model.mapper_.ceiling_atom is False.
-pit = pit_diagnostics(y_test, dist_test, model.mapper_)
+pit = pit_diagnostics(y_test, dist_test, model.mapper_, resolution=1e-6)
 hist = pit.hist_values(bins=20)
 alpha_score = pit.alpha_score()
 
@@ -226,6 +231,7 @@ pit_no_bounds = pit_diagnostics(
     y_test,
     dist_test_no_bounds,
     model_no_bounds.mapper_,
+    resolution=1e-6,
 )
 hist_no_bounds = pit_no_bounds.hist_values(bins=20)
 alpha_score_no_bounds = pit_no_bounds.alpha_score()
