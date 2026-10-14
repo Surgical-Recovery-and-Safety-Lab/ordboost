@@ -367,6 +367,7 @@ def interval_coverage_rate(
     dist: ContinuousPredictiveDistribution,
     alpha: float = 0.10,
     sample_weight: Union[ArrayLike, None] = None,
+    tolerance: float = 0.0,
 ) -> float:
     """Compute empirical coverage rate for a central prediction interval.
 
@@ -380,6 +381,10 @@ def interval_coverage_rate(
         Tail significance level (e.g., alpha=0.10 specifies a 90% interval).
     sample_weight : ArrayLike of shape (n_samples,), optional
         Sample weights for weighted coverage computation.
+    tolerance : float, default=0.0
+        Slack applied to both bounds before the containment check. Use the
+        mapper's ``boundary_epsilon`` so an atom placed ``boundary_epsilon``
+        inside the support limit is not counted as a miss.
 
     Returns
     -------
@@ -399,7 +404,9 @@ def interval_coverage_rate(
     y_true_arr = np.asarray(y_true, dtype=float)
     lower, upper = dist.interval(alpha=alpha)
 
-    covered = ((y_true_arr >= lower) & (y_true_arr <= upper)).astype(float)
+    covered = (
+        (y_true_arr >= lower - tolerance) & (y_true_arr <= upper + tolerance)
+    ).astype(float)
 
     if sample_weight is not None:
         weights = np.asarray(sample_weight, dtype=float)
