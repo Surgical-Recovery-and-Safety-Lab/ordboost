@@ -494,3 +494,31 @@ class TestSklearnCompatibility:
         )
         search.fit(X, y)
         assert hasattr(search, "best_params_")
+
+
+class TestSetParamsKwargsNone:
+    """Tests for set_params when the pass-through kwargs dict is missing."""
+
+    def test_set_params_recreates_none_kwargs(self) -> None:
+        """Test that set_params rebuilds self.kwargs if it was set to None."""
+        model = OrdBoostClassifier()
+        model.kwargs = None
+        model.set_params(max_leaf_nodes=15)
+        assert model.kwargs == {"max_leaf_nodes": 15}
+
+
+class TestFitSingleEdge:
+    """Tests for the per-threshold fitting helper (run in-process)."""
+
+    def test_returns_fitted_clone(self) -> None:
+        """Test that the helper fits a clone and leaves the template unfitted."""
+        from sklearn.ensemble import HistGradientBoostingClassifier
+
+        rng = np.random.default_rng(0)
+        X = rng.normal(size=(40, 2))
+        y_binary = (X[:, 0] > 0).astype(int)
+        base = HistGradientBoostingClassifier(max_iter=5)
+        fitted = OrdBoostClassifier()._fit_single_edge(base, X, y_binary)
+        assert fitted is not base
+        assert hasattr(fitted, "classes_")
+        assert not hasattr(base, "classes_")

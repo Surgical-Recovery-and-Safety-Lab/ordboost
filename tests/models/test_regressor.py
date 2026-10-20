@@ -527,3 +527,14 @@ class TestGetSetParams:
         )
         search.fit(X, y)
         assert hasattr(search, "best_params_")
+
+
+class TestSetParamsKwargsNone:
+    """Tests for set_params when the pass-through kwargs dict is missing."""
+
+    def test_set_params_recreates_none_kwargs(self) -> None:
+        """Test that set_params rebuilds self.kwargs if it was set to None."""
+        model = OrdBoostRegressor()
+        model.kwargs = None
+        model.set_params(max_leaf_nodes=15)
+        assert model.kwargs == {"max_leaf_nodes": 15}
