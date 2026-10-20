@@ -1,7 +1,7 @@
 """Predictive probability distributions for discrete ordinal outcomes."""
 
 from abc import ABC, abstractmethod
-from typing import Union
+from typing import Optional, Union
 
 import numpy as np
 from numpy.typing import ArrayLike
@@ -211,13 +211,22 @@ class PredictiveDistribution(ABC):
         """
         return self.ppf(0.5)
 
-    def interval(self, alpha: float = 0.10) -> tuple[np.ndarray, np.ndarray]:
+    def interval(
+        self, alpha: float = 0.10, decimals: Optional[int] = None
+    ) -> tuple[np.ndarray, np.ndarray]:
         """Calculate central prediction bounds for a given significance level.
 
         Parameters
         ----------
         alpha : float, default=0.10
             Significance level (e.g., alpha=0.10 yields a 90% central interval).
+        decimals : int | None, default=None
+            Number of decimal places of the returned bounds. If None, the
+            raw bounds are returned. If 0, both bounds are rounded up with
+            `ceil`, which is the correct rounding for bin-based
+            distributions (each bin is assigned to its upper edge), so
+            integer targets get integer intervals. If greater than 0, the
+            bounds are rounded to `decimals` places.
 
         Returns
         -------
@@ -227,15 +236,31 @@ class PredictiveDistribution(ABC):
         Raises
         ------
         ValueError
-            If `alpha` is not strictly within (0.0, 1.0).
+            If `alpha` is not strictly within (0.0, 1.0), or `decimals` is
+            negative.
+        TypeError
+            If `decimals` is neither None nor an integer.
 
         """
         if not 0.0 < alpha < 1.0:
             raise ValueError("Significance level 'alpha' must be between 0.0 and 1.0.")
+        if decimals is not None:
+            if isinstance(decimals, (bool, np.bool_)) or not isinstance(
+                decimals, (int, np.integer)
+            ):
+                raise TypeError(
+                    f"'decimals' must be an int or None, got {type(decimals).__name__}."
+                )
+            if decimals < 0:
+                raise ValueError(f"'decimals' must be non-negative, got {decimals}.")
 
         lower_q = alpha / 2.0
         upper_q = 1.0 - (alpha / 2.0)
         bounds = self.ppf(np.array([lower_q, upper_q]))
+        if decimals == 0:
+            bounds = np.ceil(bounds)
+        elif decimals is not None:
+            bounds = np.round(bounds, decimals)
         return bounds[:, 0], bounds[:, 1]
 
     @staticmethod
