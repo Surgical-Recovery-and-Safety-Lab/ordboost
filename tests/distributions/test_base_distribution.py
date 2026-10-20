@@ -291,3 +291,52 @@ class TestGetItem:
         """Test that non-integer / non-1D keys raise TypeError."""
         with pytest.raises(TypeError):
             DummyDistribution(n_samples=3)[key]
+
+
+class TestIntervalDecimals:
+    """Tests for the `decimals` parameter of PredictiveDistribution.interval."""
+
+    # alpha=0.1234 -> raw bounds 6.17 and 93.83 from DummyDistribution
+    ALPHA = 0.1234
+
+    def test_default_none_returns_raw_bounds(self) -> None:
+        """Test that decimals=None leaves the bounds untouched."""
+        lower, upper = DummyDistribution(n_samples=2).interval(self.ALPHA)
+        np.testing.assert_allclose(lower, [6.17, 6.17])
+        np.testing.assert_allclose(upper, [93.83, 93.83])
+
+    def test_zero_decimals_uses_ceil_on_both_bounds(self) -> None:
+        """Test that decimals=0 rounds both bounds up."""
+        lower, upper = DummyDistribution(n_samples=2).interval(self.ALPHA, decimals=0)
+        np.testing.assert_array_equal(lower, [7.0, 7.0])
+        np.testing.assert_array_equal(upper, [94.0, 94.0])
+
+    def test_positive_decimals_rounds(self) -> None:
+        """Test that decimals>0 rounds (not ceils) to that many places."""
+        lower, upper = DummyDistribution(n_samples=1).interval(self.ALPHA, decimals=1)
+        np.testing.assert_allclose(lower, [6.2])
+        np.testing.assert_allclose(upper, [93.8])
+
+    def test_numpy_integer_accepted(self) -> None:
+        """Test that numpy integer types are valid for decimals."""
+        lower, _ = DummyDistribution(n_samples=1).interval(
+            self.ALPHA, decimals=np.int64(0)
+        )
+        np.testing.assert_array_equal(lower, [7.0])
+
+    @pytest.mark.parametrize("decimals", [-1, np.int64(-3)])
+    def test_negative_decimals_raises(self, decimals) -> None:
+        """Test that negative decimals raise ValueError."""
+        with pytest.raises(ValueError, match="non-negative"):
+            DummyDistribution().interval(decimals=decimals)
+
+    @pytest.mark.parametrize("decimals", [1.0, 0.5, "1", True, np.float64(2.0)])
+    def test_non_integer_decimals_raises(self, decimals) -> None:
+        """Test that floats, strings and bools raise TypeError."""
+        with pytest.raises(TypeError, match="int or None"):
+            DummyDistribution().interval(decimals=decimals)
+
+    def test_invalid_alpha_still_raises_first(self) -> None:
+        """Test that alpha validation is unaffected by decimals."""
+        with pytest.raises(ValueError, match="alpha"):
+            DummyDistribution().interval(alpha=1.5, decimals=0)

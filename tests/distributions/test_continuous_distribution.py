@@ -433,3 +433,18 @@ class TestGetItem:
         sub = self._dist()[[]]
         assert len(sub) == 0
         assert sub.mean().shape == (0,)
+
+
+class TestIntervalDecimals:
+    """Tests for interval rounding on a real continuous distribution."""
+
+    def test_zero_decimals_gives_integer_valued_bounds(self) -> None:
+        """Test that decimals=0 yields integer-valued bounds >= the raw ones."""
+        grid_y = np.array([0.0, 1.0, 2.0, 3.0])
+        grid_cdf = np.array([[0.0, 0.25, 0.75, 1.0], [0.0, 0.1, 0.9, 1.0]])
+        dist = ContinuousPredictiveDistribution(grid_y, grid_cdf)
+        raw_lo, raw_hi = dist.interval(0.2)
+        lo, hi = dist.interval(0.2, decimals=0)
+        np.testing.assert_array_equal(lo, np.ceil(raw_lo))
+        np.testing.assert_array_equal(hi, np.ceil(raw_hi))
+        assert np.all(lo == np.round(lo)) and np.all(hi == np.round(hi))
