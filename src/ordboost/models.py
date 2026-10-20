@@ -110,7 +110,7 @@ class OrdBoostClassifier(BaseEstimator, ClassifierMixin):
 
         """
         # Fetch standard explicit parameters from BaseEstimator
-        params = super().get_params(deep=deep)
+        params: dict[str, Any] = super().get_params(deep=deep)
 
         # Remove raw 'kwargs' dictionary entry if BaseEstimator captured it
         params.pop("kwargs", None)
@@ -567,7 +567,7 @@ class OrdBoostRegressor(BaseEstimator, RegressorMixin):
 
         """
         # Fetch standard explicit parameters from BaseEstimator
-        params = super().get_params(deep=deep)
+        params: dict[str, Any] = super().get_params(deep=deep)
 
         # Remove raw 'kwargs' dictionary entry if BaseEstimator captured it
         params.pop("kwargs", None)

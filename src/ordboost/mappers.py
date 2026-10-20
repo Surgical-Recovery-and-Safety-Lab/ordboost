@@ -194,7 +194,7 @@ class BaseBinMapper(ABC, BaseEstimator, TransformerMixin):
 
         """
         if y_binned is None:
-            return np.digitize(y_cont, edges)
+            return np.asarray(np.digitize(y_cont, edges))
         binned = np.asarray(y_binned, dtype=int)
         if binned.shape != y_cont.shape:
             raise ValueError(
@@ -633,7 +633,7 @@ class EmpiricalMedianBinMapper(BaseBinMapper):
             frac_below = float(np.mean(bin_data < median_val))
         return np.array([median_val]), np.array([k + frac_below])
 
-    def transform(self, pmf: ArrayLike):
+    def transform(self, pmf: ArrayLike) -> np.ndarray:
         """Map a discrete PMF matrix to continuous median point estimates.
 
         Overrides `BaseBinMapper.transform` to return the median of

@@ -400,7 +400,7 @@ class DiscretePredictiveDistribution(PredictiveDistribution):
 
     def __len__(self) -> int:
         """Return the number of samples."""
-        return self.pmf.shape[0]
+        return int(self.pmf.shape[0])
 
     def _take(self, idx: np.ndarray) -> "DiscretePredictiveDistribution":
         """Select samples, reusing the cached CDF if already computed."""
@@ -439,7 +439,7 @@ class DiscretePredictiveDistribution(PredictiveDistribution):
             physical class units.
 
         """
-        return np.dot(self.pmf, self.classes)
+        return np.asarray(np.dot(self.pmf, self.classes))
 
     def _ppf(self, q_arr: np.ndarray) -> np.ndarray:
         """Map validated quantile probabilities to discrete class levels.
@@ -458,12 +458,12 @@ class DiscretePredictiveDistribution(PredictiveDistribution):
         cdf = self.cdf
         if q_arr.ndim == 0:
             indices = np.argmax(cdf >= q_arr, axis=1)
-            return self.classes[indices]
+            return np.asarray(self.classes[indices])
 
         cdf_expanded = cdf[:, np.newaxis, :]
         q_expanded = q_arr[np.newaxis, :, np.newaxis]
         indices = np.argmax(cdf_expanded >= q_expanded, axis=2)
-        return self.classes[indices]
+        return np.asarray(self.classes[indices])
 
 
 class ContinuousPredictiveDistribution(PredictiveDistribution):
@@ -541,7 +541,7 @@ class ContinuousPredictiveDistribution(PredictiveDistribution):
 
     def __len__(self) -> int:
         """Return the number of samples."""
-        return self._n_samples
+        return int(self._n_samples)
 
     def _take(self, idx: np.ndarray) -> "ContinuousPredictiveDistribution":
         """Select samples, sharing the common `grid_y`."""
@@ -594,7 +594,7 @@ class ContinuousPredictiveDistribution(PredictiveDistribution):
         """
         dy = np.diff(self.grid_y)
         avg_prob = 1.0 - 0.5 * (self.grid_cdf[:, :-1] + self.grid_cdf[:, 1:])
-        return np.sum(avg_prob * dy, axis=1) + self.grid_y[0]
+        return np.asarray(np.sum(avg_prob * dy, axis=1) + self.grid_y[0])
 
     def _ppf(self, q_arr: np.ndarray) -> np.ndarray:
         """Interpolate continuous target values at validated quantile levels.
@@ -622,7 +622,7 @@ class ContinuousPredictiveDistribution(PredictiveDistribution):
             denom = q1 - q0
             t = np.divide(q_val - q0, denom, out=np.zeros_like(q0), where=denom != 0)
             t = np.clip(t, 0.0, 1.0)
-            return (1.0 - t) * self.grid_y[idx] + t * self.grid_y[idx + 1]
+            return np.asarray((1.0 - t) * self.grid_y[idx] + t * self.grid_y[idx + 1])
 
         return np.stack([self._ppf(np.asarray(q)) for q in q_arr], axis=1)
 
