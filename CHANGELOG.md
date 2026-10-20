@@ -18,8 +18,8 @@ that many decimals.
 forwarded to `interval`.
 * New tests for the `models` script to achieve 100% coverage.
 * New tests for the additional functionalities.
-* `mypy` and `matplotlib` in the `dev` dependencies, and a GitHub Action that runs
-`mypy` on the source code.
+* `mypy` and `matplotlib` in the `dev` dependencies, and a GitHub Actions that run
+`mypy` on the source code and `ruff` (lint and format check) on the repository.
 * Documentation notes that `matplotlib` is needed to run the plotting examples.
 
 ### Fixed
