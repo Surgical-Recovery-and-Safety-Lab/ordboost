@@ -25,7 +25,101 @@ class PredictiveDistribution(ABC):
     interval(alpha=0.10)
         Calculate central prediction bounds for a given significance level.
 
+    Notes
+    -----
+    Supports row indexing along the sample axis: ``len(dist)`` gives the
+    number of samples and ``dist[key]`` returns a new distribution of the
+    same type restricted to the selected samples. See `__getitem__`.
+
     """
+
+    @abstractmethod
+    def __len__(self) -> int:
+        """Return the number of samples in the distribution."""
+        ...
+
+    @abstractmethod
+    def _take(self, idx: np.ndarray) -> "PredictiveDistribution":
+        """Build a new distribution from a validated 1D sample index.
+
+        Called by `__getitem__` after the key has been normalised to a 1D
+        integer or boolean array. Subclasses should index their per-sample
+        arrays along axis 0 and share any sample-independent arrays.
+
+        Parameters
+        ----------
+        idx : np.ndarray
+            1D integer array of sample positions (already range-checked),
+            or a 1D boolean mask of length `len(self)`.
+
+        Returns
+        -------
+        PredictiveDistribution
+            New instance of the same class containing the selected samples.
+
+        """
+        ...
+
+    def __getitem__(
+        self, key: Union[int, slice, ArrayLike]
+    ) -> "PredictiveDistribution":
+        """Select samples (rows) by position.
+
+        Parameters
+        ----------
+        key : int | slice | ArrayLike
+            An integer, a slice, a 1D array-like of integer positions, or a
+            1D boolean mask of length `len(self)`. An integer selects a
+            single sample but still returns a distribution (of length 1),
+            so that all methods keep returning arrays of shape
+            ``(n_samples, ...)``.
+
+        Returns
+        -------
+        PredictiveDistribution
+            New distribution of the same type with the selected samples.
+
+        Raises
+        ------
+        TypeError
+            If `key` is a tuple (multi-axis indexing is not supported), or
+            is not an integer, slice or 1D array-like of integers/bools.
+        IndexError
+            If an integer position is out of range, or a boolean mask does
+            not have length `len(self)`.
+
+        """
+        n = len(self)
+        if isinstance(key, tuple):
+            raise TypeError(
+                "Only row indexing is supported; multi-axis (tuple) keys are invalid."
+            )
+        if isinstance(key, slice):
+            idx = np.arange(n)[key]
+        elif isinstance(key, (int, np.integer)) and not isinstance(key, bool):
+            if not -n <= key < n:
+                raise IndexError(f"Index {key} is out of range for {n} samples.")
+            idx = np.array([key % n])
+        else:
+            idx = np.asarray(key)
+            if idx.ndim != 1:
+                raise TypeError(f"Expected a 1D index array, got a {idx.ndim}D array.")
+            if idx.dtype == bool:
+                if idx.shape[0] != n:
+                    raise IndexError(
+                        f"Boolean mask of length {idx.shape[0]} does not match "
+                        f"{n} samples."
+                    )
+            elif idx.size == 0:
+                idx = idx.astype(int)
+            elif not np.issubdtype(idx.dtype, np.integer):
+                raise TypeError(
+                    "Index arrays must contain integers or booleans, "
+                    f"got dtype {idx.dtype}."
+                )
+            elif np.any((idx < -n) | (idx >= n)):
+                raise IndexError(f"Index out of range for {n} samples.")
+        return self._take(idx)
 
     @abstractmethod
     def mean(self) -> np.ndarray:
@@ -202,6 +296,10 @@ class DiscretePredictiveDistribution(PredictiveDistribution):
 
     Methods
     -------
+    __len__()
+        Number of samples.
+    __getitem__(key)
+        Select samples by position, returning a new distribution.
     mean()
         Calculate the expected value for each sample.
     ppf(q)
@@ -274,6 +372,17 @@ class DiscretePredictiveDistribution(PredictiveDistribution):
                 "Every row of 'pmf' must sum to 1.0 within tolerance; "
                 f"got sums ranging [{row_sums.min():.6f}, {row_sums.max():.6f}]."
             )
+
+    def __len__(self) -> int:
+        """Return the number of samples."""
+        return self.pmf.shape[0]
+
+    def _take(self, idx: np.ndarray) -> "DiscretePredictiveDistribution":
+        """Select samples, reusing the cached CDF if already computed."""
+        new = DiscretePredictiveDistribution(self.pmf[idx], self.classes)
+        if self._cdf is not None:
+            new._cdf = self._cdf[idx]
+        return new
 
     @property
     def cdf(self) -> np.ndarray:
@@ -360,6 +469,10 @@ class ContinuousPredictiveDistribution(PredictiveDistribution):
 
     Methods
     -------
+    __len__()
+        Number of samples.
+    __getitem__(key)
+        Select samples by position, returning a new distribution.
     mean()
         Calculate expected continuous values via numerical integration.
     ppf(q)
@@ -400,6 +513,14 @@ class ContinuousPredictiveDistribution(PredictiveDistribution):
         self.grid_cdf = cdf_arr.copy()
         self.grid_cdf.flags.writeable = False  # Convert to read-only
         self._n_samples = cdf_arr.shape[0]
+
+    def __len__(self) -> int:
+        """Return the number of samples."""
+        return self._n_samples
+
+    def _take(self, idx: np.ndarray) -> "ContinuousPredictiveDistribution":
+        """Select samples, sharing the common `grid_y`."""
+        return ContinuousPredictiveDistribution(self.grid_y, self.grid_cdf[idx])
 
     @staticmethod
     def _validate_normalized_cdf_grid(
