@@ -8,7 +8,8 @@ rng = np.random.default_rng(42)  # For reproducibility
 n_samples = 2000
 
 X = rng.standard_normal((n_samples, 3))
-y = 10.0 + X[:, 0] * 4.0 + X[:, 1] * 2.5 + rng.standard_normal(n_samples) * 3
+# The target is integer-valued (e.g. a count of days)
+y = np.round(10.0 + X[:, 0] * 4.0 + X[:, 1] * 2.5 + rng.standard_normal(n_samples) * 3)
 
 X_train, X_test, y_train, y_test = train_test_split(
     X, y, test_size=0.2, random_state=42
@@ -21,6 +22,10 @@ reg = OrdBoostRegressor().fit(
 dist = reg.predict_dist(X_test)
 
 # --- Evaluate
+# The target is an integer, so the interval bounds are rounded up to integers
+# with decimals=0. Pass decimals=None to use the raw bounds instead.
+decimals = 0
+
 # Define alpha levels
 alphas = [0.10, 0.20, 0.5]
 n_alphas = len(alphas)
@@ -34,9 +39,9 @@ sharp = np.zeros((n_alphas,))
 # Evaluate alpha levels (e.g., 90%, 80%, and 50% intervals)
 for i, alpha in enumerate([0.10, 0.20, 0.50]):
     nominal_coverage[i] = 1.0 - alpha
-    coverage[i] = interval_coverage_rate(y_test, dist, alpha=alpha)
-    w_score[i] = winkler_score(y_test, dist, alpha=alpha)
-    sharp[i] = sharpness(dist, alpha=alpha)
+    coverage[i] = interval_coverage_rate(y_test, dist, alpha=alpha, decimals=decimals)
+    w_score[i] = winkler_score(y_test, dist, alpha=alpha, decimals=decimals)
+    sharp[i] = sharpness(dist, alpha=alpha, decimals=decimals)
 
 
 # Print results as a table
