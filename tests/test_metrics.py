@@ -705,7 +705,7 @@ class TestIntervalCoverageRate:
         # Covered array: [True, False, True] -> Mean = 2/3
         coverage = interval_coverage_rate(y_true, dist, alpha=0.10)
         assert coverage == pytest.approx(2.0 / 3.0, abs=1e-6)
-        dist.interval.assert_called_once_with(alpha=0.10)
+        dist.interval.assert_called_once_with(alpha=0.10, decimals=None)
 
     def test_coverage_rate_weighted(self) -> None:
         """Test weighted empirical coverage rate calculation."""
@@ -770,14 +770,14 @@ class TestSharpness:
         dist = MagicMock(spec=ContinuousPredictiveDistribution)
         dist.interval.return_value = (np.array([0.0]), np.array([10.0]))
         sharpness(dist, alpha=0.20)
-        dist.interval.assert_called_once_with(alpha=0.20)
+        dist.interval.assert_called_once_with(alpha=0.20, decimals=None)
 
     def test_default_alpha(self) -> None:
         """Test that the default alpha=0.10 is used when not specified."""
         dist = MagicMock(spec=ContinuousPredictiveDistribution)
         dist.interval.return_value = (np.array([0.0]), np.array([10.0]))
         sharpness(dist)
-        dist.interval.assert_called_once_with(alpha=0.10)
+        dist.interval.assert_called_once_with(alpha=0.10, decimals=None)
 
     def test_zero_width_interval_gives_zero_sharpness(self) -> None:
         """Test that identical lower and upper bounds give sharpness of 0.0."""
@@ -860,7 +860,7 @@ class TestWinklerScore:
         # Mean score = (6.0 + 50.0 + 110.0) / 3 = 166.0 / 3
         score = winkler_score(y_true, dist, alpha=alpha)
         assert score == pytest.approx(166.0 / 3.0, abs=1e-6)
-        dist.interval.assert_called_once_with(alpha=0.10)
+        dist.interval.assert_called_once_with(alpha=0.10, decimals=None)
 
     def test_winkler_score_weighted(self) -> None:
         """Test weighted Winkler score calculation."""
@@ -1311,3 +1311,57 @@ class TestPitKsTest:
         assert isinstance(pval, float)
         assert 0.0 <= stat <= 1.0
         assert 0.0 <= pval <= 1.0
+
+
+class TestIntervalDecimalsPassthrough:
+    """Tests that interval-based metrics forward `decimals` to dist.interval."""
+
+    @staticmethod
+    def _dist() -> MagicMock:
+        dist = MagicMock(spec=ContinuousPredictiveDistribution)
+        dist.interval.return_value = (np.array([2.0, 5.0]), np.array([8.0, 15.0]))
+        return dist
+
+    def test_interval_coverage_rate_forwards_decimals(self) -> None:
+        """Test interval_coverage_rate passes decimals to interval."""
+        dist = self._dist()
+        interval_coverage_rate(np.array([5.0, 6.0]), dist, alpha=0.2, decimals=0)
+        dist.interval.assert_called_once_with(alpha=0.2, decimals=0)
+
+    def test_sharpness_forwards_decimals(self) -> None:
+        """Test sharpness passes decimals to interval."""
+        dist = self._dist()
+        sharpness(dist, alpha=0.2, decimals=1)
+        dist.interval.assert_called_once_with(alpha=0.2, decimals=1)
+
+    def test_winkler_score_forwards_decimals(self) -> None:
+        """Test winkler_score passes decimals to interval."""
+        dist = self._dist()
+        winkler_score(np.array([5.0, 6.0]), dist, alpha=0.2, decimals=2)
+        dist.interval.assert_called_once_with(alpha=0.2, decimals=2)
+
+    @pytest.mark.parametrize(
+        "call",
+        [
+            lambda d, **kw: interval_coverage_rate(np.array([1.0]), d, **kw),
+            lambda d, **kw: sharpness(d, **kw),
+            lambda d, **kw: winkler_score(np.array([1.0]), d, **kw),
+        ],
+    )
+    def test_invalid_decimals_raise_from_real_distribution(self, call) -> None:
+        """Test that invalid decimals raise through a real distribution."""
+        dist = ContinuousPredictiveDistribution(
+            np.array([0.0, 1.0, 2.0]), np.array([[0.0, 0.5, 1.0]])
+        )
+        with pytest.raises(ValueError, match="non-negative"):
+            call(dist, decimals=-1)
+        with pytest.raises(TypeError, match="int or None"):
+            call(dist, decimals=1.5)
+
+    def test_zero_decimals_changes_sharpness_on_real_distribution(self) -> None:
+        """Test that decimals=0 widens (ceil) the raw interval width."""
+        dist = ContinuousPredictiveDistribution(
+            np.array([0.0, 1.0, 2.0, 3.0]), np.array([[0.0, 0.25, 0.75, 1.0]])
+        )
+        lo, hi = dist.interval(0.3, decimals=0)
+        assert sharpness(dist, alpha=0.3, decimals=0) == pytest.approx(hi[0] - lo[0])

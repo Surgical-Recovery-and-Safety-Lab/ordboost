@@ -372,3 +372,79 @@ class TestCdf:
         """Test that a 2D y array raises ValueError."""
         with pytest.raises(ValueError, match="scalar or 1D array of length"):
             sample_distribution.cdf(np.array([[10.0, 15.0]]))
+
+
+class TestGetItem:
+    """Tests for ContinuousPredictiveDistribution row indexing."""
+
+    GRID_Y = np.array([0.0, 1.0, 2.0, 3.0])
+    GRID_CDF = np.array(
+        [
+            [0.0, 0.25, 0.75, 1.0],
+            [0.0, 0.5, 0.5, 1.0],
+            [0.0, 0.0, 0.0, 1.0],
+            [0.0, 0.1, 0.9, 1.0],
+        ]
+    )
+
+    def _dist(self) -> ContinuousPredictiveDistribution:
+        return ContinuousPredictiveDistribution(self.GRID_Y, self.GRID_CDF)
+
+    @pytest.mark.parametrize("key", [1, -1, slice(1, 3), [3, 0]])
+    def test_methods_match_parent(self, key) -> None:
+        """Test that methods on a subset equal the parent's rows."""
+        dist = self._dist()
+        rows = np.arange(4)[key]
+        rows = np.atleast_1d(rows)
+        sub = dist[key]
+        assert isinstance(sub, ContinuousPredictiveDistribution)
+        assert len(sub) == len(rows)
+        np.testing.assert_allclose(sub.mean(), dist.mean()[rows])
+        np.testing.assert_allclose(sub.ppf(0.5), dist.ppf(0.5)[rows])
+        np.testing.assert_allclose(sub.ppf([0.1, 0.9]), dist.ppf([0.1, 0.9])[rows])
+        lo, hi = dist.interval(0.2)
+        sub_lo, sub_hi = sub.interval(0.2)
+        np.testing.assert_allclose(sub_lo, lo[rows])
+        np.testing.assert_allclose(sub_hi, hi[rows])
+        np.testing.assert_allclose(sub.cdf(1.5), dist.cdf(1.5)[rows])
+
+    def test_boolean_mask(self) -> None:
+        """Test that a boolean mask selects the matching rows."""
+        sub = self._dist()[[True, False, False, True]]
+        np.testing.assert_allclose(sub.grid_cdf, self.GRID_CDF[[0, 3]])
+
+    def test_cdf_array_length_follows_subset(self) -> None:
+        """Test that cdf(y) expects y of the subset's length."""
+        sub = self._dist()[:2]
+        assert sub.cdf(np.array([1.0, 2.0])).shape == (2,)
+        with pytest.raises(ValueError):
+            sub.cdf(np.array([1.0, 2.0, 3.0]))
+
+    def test_parent_unchanged_and_grid_shared(self) -> None:
+        """Test that the parent is untouched and grid_y is preserved."""
+        dist = self._dist()
+        sub = dist[:2]
+        np.testing.assert_array_equal(sub.grid_y, self.GRID_Y)
+        np.testing.assert_array_equal(dist.grid_cdf, self.GRID_CDF)
+        assert len(dist) == 4
+
+    def test_empty_selection(self) -> None:
+        """Test that an empty selection gives an empty distribution."""
+        sub = self._dist()[[]]
+        assert len(sub) == 0
+        assert sub.mean().shape == (0,)
+
+
+class TestIntervalDecimals:
+    """Tests for interval rounding on a real continuous distribution."""
+
+    def test_zero_decimals_gives_integer_valued_bounds(self) -> None:
+        """Test that decimals=0 yields integer-valued bounds >= the raw ones."""
+        grid_y = np.array([0.0, 1.0, 2.0, 3.0])
+        grid_cdf = np.array([[0.0, 0.25, 0.75, 1.0], [0.0, 0.1, 0.9, 1.0]])
+        dist = ContinuousPredictiveDistribution(grid_y, grid_cdf)
+        raw_lo, raw_hi = dist.interval(0.2)
+        lo, hi = dist.interval(0.2, decimals=0)
+        np.testing.assert_array_equal(lo, np.ceil(raw_lo))
+        np.testing.assert_array_equal(hi, np.ceil(raw_hi))
+        assert np.all(lo == np.round(lo)) and np.all(hi == np.round(hi))

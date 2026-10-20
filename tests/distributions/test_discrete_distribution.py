@@ -306,3 +306,59 @@ class TestInterval:
         np.testing.assert_array_equal(upper, np.array([20, 20, 30]))
         assert np.all(lower <= dist.median())
         assert np.all(dist.median() <= upper)
+
+
+class TestGetItem:
+    """Tests for DiscretePredictiveDistribution row indexing."""
+
+    PMF = np.array([[0.5, 0.5, 0.0], [0.1, 0.2, 0.7], [0.0, 0.0, 1.0], [0.3, 0.3, 0.4]])
+    CLASSES = np.array([1, 2, 3])
+
+    def _dist(self) -> DiscretePredictiveDistribution:
+        return DiscretePredictiveDistribution(pmf=self.PMF, classes=self.CLASSES)
+
+    @pytest.mark.parametrize(
+        "key, rows",
+        [
+            (1, [1]),
+            (-1, [3]),
+            (slice(1, 3), [1, 2]),
+            ([3, 0], [3, 0]),
+            ([True, False, True, False], [0, 2]),
+        ],
+    )
+    def test_methods_match_parent(self, key, rows) -> None:
+        """Test that methods on a subset equal the parent's rows."""
+        dist = self._dist()
+        sub = dist[key]
+        assert isinstance(sub, DiscretePredictiveDistribution)
+        np.testing.assert_allclose(sub.mean(), dist.mean()[rows])
+        np.testing.assert_array_equal(sub.ppf(0.5), dist.ppf(0.5)[rows])
+        np.testing.assert_array_equal(sub.ppf([0.1, 0.9]), dist.ppf([0.1, 0.9])[rows])
+        np.testing.assert_allclose(sub.cdf, dist.cdf[rows])
+
+    def test_int_returns_length_one(self) -> None:
+        """Test that an integer key yields a 1-sample distribution."""
+        assert len(self._dist()[2]) == 1
+
+    def test_shares_classes_and_leaves_parent_unchanged(self) -> None:
+        """Test classes are preserved and the parent is not modified."""
+        dist = self._dist()
+        sub = dist[[0, 1]]
+        np.testing.assert_array_equal(sub.classes, self.CLASSES)
+        np.testing.assert_array_equal(dist.pmf, self.PMF)
+        assert len(dist) == 4
+
+    def test_cached_cdf_is_reused(self) -> None:
+        """Test that an already-computed CDF is sliced, not recomputed."""
+        dist = self._dist()
+        _ = dist.cdf
+        sub = dist[1:3]
+        assert sub._cdf is not None
+        np.testing.assert_allclose(sub.cdf, dist.cdf[1:3])
+
+    def test_empty_selection(self) -> None:
+        """Test that an empty selection gives an empty distribution."""
+        sub = self._dist()[[]]
+        assert len(sub) == 0
+        assert sub.mean().shape == (0,)

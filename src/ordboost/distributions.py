@@ -1,7 +1,7 @@
 """Predictive probability distributions for discrete ordinal outcomes."""
 
 from abc import ABC, abstractmethod
-from typing import Union
+from typing import Optional, Union
 
 import numpy as np
 from numpy.typing import ArrayLike
@@ -25,7 +25,101 @@ class PredictiveDistribution(ABC):
     interval(alpha=0.10)
         Calculate central prediction bounds for a given significance level.
 
+    Notes
+    -----
+    Supports row indexing along the sample axis: ``len(dist)`` gives the
+    number of samples and ``dist[key]`` returns a new distribution of the
+    same type restricted to the selected samples. See `__getitem__`.
+
     """
+
+    @abstractmethod
+    def __len__(self) -> int:
+        """Return the number of samples in the distribution."""
+        ...
+
+    @abstractmethod
+    def _take(self, idx: np.ndarray) -> "PredictiveDistribution":
+        """Build a new distribution from a validated 1D sample index.
+
+        Called by `__getitem__` after the key has been normalised to a 1D
+        integer or boolean array. Subclasses should index their per-sample
+        arrays along axis 0 and share any sample-independent arrays.
+
+        Parameters
+        ----------
+        idx : np.ndarray
+            1D integer array of sample positions (already range-checked),
+            or a 1D boolean mask of length `len(self)`.
+
+        Returns
+        -------
+        PredictiveDistribution
+            New instance of the same class containing the selected samples.
+
+        """
+        ...
+
+    def __getitem__(
+        self, key: Union[int, slice, ArrayLike]
+    ) -> "PredictiveDistribution":
+        """Select samples (rows) by position.
+
+        Parameters
+        ----------
+        key : int | slice | ArrayLike
+            An integer, a slice, a 1D array-like of integer positions, or a
+            1D boolean mask of length `len(self)`. An integer selects a
+            single sample but still returns a distribution (of length 1),
+            so that all methods keep returning arrays of shape
+            ``(n_samples, ...)``.
+
+        Returns
+        -------
+        PredictiveDistribution
+            New distribution of the same type with the selected samples.
+
+        Raises
+        ------
+        TypeError
+            If `key` is a tuple (multi-axis indexing is not supported), or
+            is not an integer, slice or 1D array-like of integers/bools.
+        IndexError
+            If an integer position is out of range, or a boolean mask does
+            not have length `len(self)`.
+
+        """
+        n = len(self)
+        if isinstance(key, tuple):
+            raise TypeError(
+                "Only row indexing is supported; multi-axis (tuple) keys are invalid."
+            )
+        if isinstance(key, slice):
+            idx = np.arange(n)[key]
+        elif isinstance(key, (int, np.integer)) and not isinstance(key, bool):
+            if not -n <= key < n:
+                raise IndexError(f"Index {key} is out of range for {n} samples.")
+            idx = np.array([key % n])
+        else:
+            idx = np.asarray(key)
+            if idx.ndim != 1:
+                raise TypeError(f"Expected a 1D index array, got a {idx.ndim}D array.")
+            if idx.dtype == bool:
+                if idx.shape[0] != n:
+                    raise IndexError(
+                        f"Boolean mask of length {idx.shape[0]} does not match "
+                        f"{n} samples."
+                    )
+            elif idx.size == 0:
+                idx = idx.astype(int)
+            elif not np.issubdtype(idx.dtype, np.integer):
+                raise TypeError(
+                    "Index arrays must contain integers or booleans, "
+                    f"got dtype {idx.dtype}."
+                )
+            elif np.any((idx < -n) | (idx >= n)):
+                raise IndexError(f"Index out of range for {n} samples.")
+        return self._take(idx)
 
     @abstractmethod
     def mean(self) -> np.ndarray:
@@ -117,13 +211,22 @@ class PredictiveDistribution(ABC):
         """
         return self.ppf(0.5)
 
-    def interval(self, alpha: float = 0.10) -> tuple[np.ndarray, np.ndarray]:
+    def interval(
+        self, alpha: float = 0.10, decimals: Optional[int] = None
+    ) -> tuple[np.ndarray, np.ndarray]:
         """Calculate central prediction bounds for a given significance level.
 
         Parameters
         ----------
         alpha : float, default=0.10
             Significance level (e.g., alpha=0.10 yields a 90% central interval).
+        decimals : int | None, default=None
+            Number of decimal places of the returned bounds. If None, the
+            raw bounds are returned. If 0, both bounds are rounded up with
+            `ceil`, which is the correct rounding for bin-based
+            distributions (each bin is assigned to its upper edge), so
+            integer targets get integer intervals. If greater than 0, the
+            bounds are rounded to `decimals` places.
 
         Returns
         -------
@@ -133,15 +236,31 @@ class PredictiveDistribution(ABC):
         Raises
         ------
         ValueError
-            If `alpha` is not strictly within (0.0, 1.0).
+            If `alpha` is not strictly within (0.0, 1.0), or `decimals` is
+            negative.
+        TypeError
+            If `decimals` is neither None nor an integer.
 
         """
         if not 0.0 < alpha < 1.0:
             raise ValueError("Significance level 'alpha' must be between 0.0 and 1.0.")
+        if decimals is not None:
+            if isinstance(decimals, (bool, np.bool_)) or not isinstance(
+                decimals, (int, np.integer)
+            ):
+                raise TypeError(
+                    f"'decimals' must be an int or None, got {type(decimals).__name__}."
+                )
+            if decimals < 0:
+                raise ValueError(f"'decimals' must be non-negative, got {decimals}.")
 
         lower_q = alpha / 2.0
         upper_q = 1.0 - (alpha / 2.0)
         bounds = self.ppf(np.array([lower_q, upper_q]))
+        if decimals == 0:
+            bounds = np.ceil(bounds)
+        elif decimals is not None:
+            bounds = np.round(bounds, decimals)
         return bounds[:, 0], bounds[:, 1]
 
     @staticmethod
@@ -202,6 +321,10 @@ class DiscretePredictiveDistribution(PredictiveDistribution):
 
     Methods
     -------
+    __len__()
+        Number of samples.
+    __getitem__(key)
+        Select samples by position, returning a new distribution.
     mean()
         Calculate the expected value for each sample.
     ppf(q)
@@ -275,6 +398,17 @@ class DiscretePredictiveDistribution(PredictiveDistribution):
                 f"got sums ranging [{row_sums.min():.6f}, {row_sums.max():.6f}]."
             )
 
+    def __len__(self) -> int:
+        """Return the number of samples."""
+        return int(self.pmf.shape[0])
+
+    def _take(self, idx: np.ndarray) -> "DiscretePredictiveDistribution":
+        """Select samples, reusing the cached CDF if already computed."""
+        new = DiscretePredictiveDistribution(self.pmf[idx], self.classes)
+        if self._cdf is not None:
+            new._cdf = self._cdf[idx]
+        return new
+
     @property
     def cdf(self) -> np.ndarray:
         """Compute the Cumulative Distribution Function (CDF) array.
@@ -305,7 +439,7 @@ class DiscretePredictiveDistribution(PredictiveDistribution):
             physical class units.
 
         """
-        return np.dot(self.pmf, self.classes)
+        return np.asarray(np.dot(self.pmf, self.classes))
 
     def _ppf(self, q_arr: np.ndarray) -> np.ndarray:
         """Map validated quantile probabilities to discrete class levels.
@@ -324,12 +458,12 @@ class DiscretePredictiveDistribution(PredictiveDistribution):
         cdf = self.cdf
         if q_arr.ndim == 0:
             indices = np.argmax(cdf >= q_arr, axis=1)
-            return self.classes[indices]
+            return np.asarray(self.classes[indices])
 
         cdf_expanded = cdf[:, np.newaxis, :]
         q_expanded = q_arr[np.newaxis, :, np.newaxis]
         indices = np.argmax(cdf_expanded >= q_expanded, axis=2)
-        return self.classes[indices]
+        return np.asarray(self.classes[indices])
 
 
 class ContinuousPredictiveDistribution(PredictiveDistribution):
@@ -360,6 +494,10 @@ class ContinuousPredictiveDistribution(PredictiveDistribution):
 
     Methods
     -------
+    __len__()
+        Number of samples.
+    __getitem__(key)
+        Select samples by position, returning a new distribution.
     mean()
         Calculate expected continuous values via numerical integration.
     ppf(q)
@@ -400,6 +538,14 @@ class ContinuousPredictiveDistribution(PredictiveDistribution):
         self.grid_cdf = cdf_arr.copy()
         self.grid_cdf.flags.writeable = False  # Convert to read-only
         self._n_samples = cdf_arr.shape[0]
+
+    def __len__(self) -> int:
+        """Return the number of samples."""
+        return int(self._n_samples)
+
+    def _take(self, idx: np.ndarray) -> "ContinuousPredictiveDistribution":
+        """Select samples, sharing the common `grid_y`."""
+        return ContinuousPredictiveDistribution(self.grid_y, self.grid_cdf[idx])
 
     @staticmethod
     def _validate_normalized_cdf_grid(
@@ -448,7 +594,7 @@ class ContinuousPredictiveDistribution(PredictiveDistribution):
         """
         dy = np.diff(self.grid_y)
         avg_prob = 1.0 - 0.5 * (self.grid_cdf[:, :-1] + self.grid_cdf[:, 1:])
-        return np.sum(avg_prob * dy, axis=1) + self.grid_y[0]
+        return np.asarray(np.sum(avg_prob * dy, axis=1) + self.grid_y[0])
 
     def _ppf(self, q_arr: np.ndarray) -> np.ndarray:
         """Interpolate continuous target values at validated quantile levels.
@@ -476,7 +622,7 @@ class ContinuousPredictiveDistribution(PredictiveDistribution):
             denom = q1 - q0
             t = np.divide(q_val - q0, denom, out=np.zeros_like(q0), where=denom != 0)
             t = np.clip(t, 0.0, 1.0)
-            return (1.0 - t) * self.grid_y[idx] + t * self.grid_y[idx + 1]
+            return np.asarray((1.0 - t) * self.grid_y[idx] + t * self.grid_y[idx + 1])
 
         return np.stack([self._ppf(np.asarray(q)) for q in q_arr], axis=1)
 

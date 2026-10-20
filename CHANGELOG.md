@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to Semantic Versioning ([SemVer](https://semver.org/spec/v2.0.0.html)).
 
+## [0.6.0] - 2026-10-21
+
+### Added
+* Row indexing for `PredictiveDistribution` and its children: `len(dist)` and
+`dist[key]` (int, slice, integer array or boolean mask) return a distribution of
+the selected samples.
+* `decimals` parameter on `PredictiveDistribution.interval`. `None` (default) returns
+the raw bounds, `0` applies `ceil` to both bounds, and a positive integer rounds to
+that many decimals.
+* `decimals` parameter on `interval_coverage_rate`, `sharpness` and `winkler_score`,
+forwarded to `interval`.
+* New tests for the `models` script to achieve 100% coverage.
+* New tests for the additional functionalities.
+* `mypy` and `matplotlib` in the `dev` dependencies, and a GitHub Actions that run
+`mypy` on the source code and `ruff` (lint and format check) on the repository.
+* Documentation notes that `matplotlib` is needed to run the plotting examples.
+
+### Fixed
+* Type errors reported by `mypy` in `distributions.py`, `mappers.py` and `models.py`.
+
+### Changed
+* Updated the `interval_evaluation.py` example, and its documentation in
+`evaluation.md`, to showcase the `decimals` use.
+
 ## [0.5.0] - 2026-10-14
 
 ### Changed
@@ -173,7 +197,8 @@ contains the code for interval evaluation example.
 * Unit tests
 * Github workflow to run tests on push and pull request
 
-[Unreleased]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.5.0...v0.6.0
 [v0.5.0]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.3.0...v0.3.1

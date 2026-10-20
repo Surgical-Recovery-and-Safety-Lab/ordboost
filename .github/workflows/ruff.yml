@@ -1,0 +1,19 @@
+name: ruff
+
+on: [push, pull_request]
+
+jobs:
+  ruff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: pip install .[dev]
+      - name: Run ruff check
+        run: ruff check .
+      - name: Check ruff formatting
+        run: ruff format --check .

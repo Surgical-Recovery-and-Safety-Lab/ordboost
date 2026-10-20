@@ -18,6 +18,14 @@ class DummyDistribution(PredictiveDistribution):
     def __init__(self, n_samples: int = 3) -> None:
         self.n_samples = n_samples
 
+    def __len__(self) -> int:
+        """Return the number of samples."""
+        return self.n_samples
+
+    def _take(self, idx: np.ndarray) -> "DummyDistribution":
+        """Return a dummy with the selected number of samples."""
+        return DummyDistribution(len(np.arange(self.n_samples)[idx]))
+
     def mean(self) -> np.ndarray:
         """Return a fixed, checkable per-sample mean."""
         return np.arange(self.n_samples, dtype=float)
@@ -228,3 +236,107 @@ class TestValidateStrictlyAscending:
             PredictiveDistribution._validate_strictly_ascending(
                 "my_custom_field", np.array([3.0, 1.0])
             )
+
+
+class TestGetItem:
+    """Tests for PredictiveDistribution.__getitem__ key normalisation."""
+
+    def test_len(self) -> None:
+        """Test that len() reports the number of samples."""
+        assert len(DummyDistribution(n_samples=4)) == 4
+
+    @pytest.mark.parametrize(
+        "key, expected",
+        [
+            (0, 1),
+            (-1, 1),
+            (slice(1, 3), 2),
+            (slice(None), 5),
+            ([0, 2, 4], 3),
+            (np.array([1, 1]), 2),
+            ([True, False, True, False, False], 2),
+            ([], 0),
+        ],
+    )
+    def test_valid_keys(self, key, expected) -> None:
+        """Test that valid keys return a distribution of the right length."""
+        result = DummyDistribution(n_samples=5)[key]
+        assert isinstance(result, DummyDistribution)
+        assert len(result) == expected
+
+    @pytest.mark.parametrize("key", [5, -6])
+    def test_out_of_range_int_raises(self, key) -> None:
+        """Test that out-of-range integers raise IndexError."""
+        with pytest.raises(IndexError):
+            DummyDistribution(n_samples=5)[key]
+
+    def test_out_of_range_array_raises(self) -> None:
+        """Test that out-of-range integer arrays raise IndexError."""
+        with pytest.raises(IndexError):
+            DummyDistribution(n_samples=3)[[0, 3]]
+
+    def test_wrong_length_mask_raises(self) -> None:
+        """Test that a boolean mask of the wrong length raises IndexError."""
+        with pytest.raises(IndexError):
+            DummyDistribution(n_samples=3)[[True, False]]
+
+    @pytest.mark.parametrize("key", [(0, 1), (slice(None), 0)])
+    def test_tuple_key_raises(self, key) -> None:
+        """Test that tuple keys raise TypeError."""
+        with pytest.raises(TypeError):
+            DummyDistribution(n_samples=3)[key]
+
+    @pytest.mark.parametrize("key", [[[0, 1]], [0.5, 1.5], "a", True])
+    def test_invalid_key_type_raises(self, key) -> None:
+        """Test that non-integer / non-1D keys raise TypeError."""
+        with pytest.raises(TypeError):
+            DummyDistribution(n_samples=3)[key]
+
+
+class TestIntervalDecimals:
+    """Tests for the `decimals` parameter of PredictiveDistribution.interval."""
+
+    # alpha=0.1234 -> raw bounds 6.17 and 93.83 from DummyDistribution
+    ALPHA = 0.1234
+
+    def test_default_none_returns_raw_bounds(self) -> None:
+        """Test that decimals=None leaves the bounds untouched."""
+        lower, upper = DummyDistribution(n_samples=2).interval(self.ALPHA)
+        np.testing.assert_allclose(lower, [6.17, 6.17])
+        np.testing.assert_allclose(upper, [93.83, 93.83])
+
+    def test_zero_decimals_uses_ceil_on_both_bounds(self) -> None:
+        """Test that decimals=0 rounds both bounds up."""
+        lower, upper = DummyDistribution(n_samples=2).interval(self.ALPHA, decimals=0)
+        np.testing.assert_array_equal(lower, [7.0, 7.0])
+        np.testing.assert_array_equal(upper, [94.0, 94.0])
+
+    def test_positive_decimals_rounds(self) -> None:
+        """Test that decimals>0 rounds (not ceils) to that many places."""
+        lower, upper = DummyDistribution(n_samples=1).interval(self.ALPHA, decimals=1)
+        np.testing.assert_allclose(lower, [6.2])
+        np.testing.assert_allclose(upper, [93.8])
+
+    def test_numpy_integer_accepted(self) -> None:
+        """Test that numpy integer types are valid for decimals."""
+        lower, _ = DummyDistribution(n_samples=1).interval(
+            self.ALPHA, decimals=np.int64(0)
+        )
+        np.testing.assert_array_equal(lower, [7.0])
+
+    @pytest.mark.parametrize("decimals", [-1, np.int64(-3)])
+    def test_negative_decimals_raises(self, decimals) -> None:
+        """Test that negative decimals raise ValueError."""
+        with pytest.raises(ValueError, match="non-negative"):
+            DummyDistribution().interval(decimals=decimals)
+
+    @pytest.mark.parametrize("decimals", [1.0, 0.5, "1", True, np.float64(2.0)])
+    def test_non_integer_decimals_raises(self, decimals) -> None:
+        """Test that floats, strings and bools raise TypeError."""
+        with pytest.raises(TypeError, match="int or None"):
+            DummyDistribution().interval(decimals=decimals)
+
+    def test_invalid_alpha_still_raises_first(self) -> None:
+        """Test that alpha validation is unaffected by decimals."""
+        with pytest.raises(ValueError, match="alpha"):
+            DummyDistribution().interval(alpha=1.5, decimals=0)

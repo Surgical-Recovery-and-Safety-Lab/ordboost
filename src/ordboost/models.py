@@ -110,7 +110,7 @@ class OrdBoostClassifier(BaseEstimator, ClassifierMixin):
 
         """
         # Fetch standard explicit parameters from BaseEstimator
-        params = super().get_params(deep=deep)
+        params: dict[str, Any] = super().get_params(deep=deep)
 
         # Remove raw 'kwargs' dictionary entry if BaseEstimator captured it
         params.pop("kwargs", None)
@@ -567,7 +567,7 @@ class OrdBoostRegressor(BaseEstimator, RegressorMixin):
 
         """
         # Fetch standard explicit parameters from BaseEstimator
-        params = super().get_params(deep=deep)
+        params: dict[str, Any] = super().get_params(deep=deep)
 
         # Remove raw 'kwargs' dictionary entry if BaseEstimator captured it
         params.pop("kwargs", None)
@@ -653,8 +653,6 @@ class OrdBoostRegressor(BaseEstimator, RegressorMixin):
             edges = np.quantile(y, quantiles)[1:-1]
             # Ensure unique edges if duplicates occur in dense regions
             edges = np.unique(edges)
-            if len(edges) < 1:
-                edges = np.linspace(np.min(y), np.max(y), self.n_bins + 1)[1:-1]
         elif self.bin_strategy == "uniform":
             edges = np.linspace(np.min(y), np.max(y), self.n_bins + 1)[1:-1]
         else:

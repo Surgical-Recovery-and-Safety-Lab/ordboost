@@ -368,6 +368,7 @@ def interval_coverage_rate(
     alpha: float = 0.10,
     sample_weight: Union[ArrayLike, None] = None,
     tolerance: float = 0.0,
+    decimals: Union[int, None] = None,
 ) -> float:
     """Compute empirical coverage rate for a central prediction interval.
 
@@ -385,6 +386,11 @@ def interval_coverage_rate(
         Slack applied to both bounds before the containment check. Use the
         mapper's ``boundary_epsilon`` so an atom placed ``boundary_epsilon``
         inside the support limit is not counted as a miss.
+    decimals : int or None, default=None
+        Number of decimals of the interval bounds, passed to
+        `dist.interval`. ``None`` keeps the raw bounds, ``0`` rounds both
+        up with ``ceil`` (for integer targets), and a positive integer
+        rounds to that many places.
 
     Returns
     -------
@@ -394,15 +400,17 @@ def interval_coverage_rate(
     Raises
     ------
     ValueError
-        If alpha not within (0.0, 1.0); or sample_weights do not have
-        the same shape as y_arr.
+        If alpha not within (0.0, 1.0); sample_weights do not have
+        the same shape as y_arr; or decimals is negative.
+    TypeError
+        If decimals is neither None nor an integer.
 
     """
     if not 0.0 < alpha < 1.0:
         raise ValueError("Significance level 'alpha' must lie within (0.0, 1.0).")
 
     y_true_arr = np.asarray(y_true, dtype=float)
-    lower, upper = dist.interval(alpha=alpha)
+    lower, upper = dist.interval(alpha=alpha, decimals=decimals)
 
     covered = (
         (y_true_arr >= lower - tolerance) & (y_true_arr <= upper + tolerance)
@@ -420,7 +428,11 @@ def interval_coverage_rate(
     return float(np.mean(covered))
 
 
-def sharpness(dist: ContinuousPredictiveDistribution, alpha: float = 0.10) -> float:
+def sharpness(
+    dist: ContinuousPredictiveDistribution,
+    alpha: float = 0.10,
+    decimals: Union[int, None] = None,
+) -> float:
     """Compute mean interval width at significance level alpha.
 
 
@@ -430,6 +442,11 @@ def sharpness(dist: ContinuousPredictiveDistribution, alpha: float = 0.10) -> fl
         Predicted continuous distributions.
     alpha : float, default=0.10
         Tail significance level in range (0.0, 1.0).
+    decimals : int or None, default=None
+        Number of decimals of the interval bounds, passed to
+        `dist.interval`. ``None`` keeps the raw bounds, ``0`` rounds both
+        up with ``ceil`` (for integer targets), and a positive integer
+        rounds to that many places.
 
     Returns
     -------
@@ -439,13 +456,15 @@ def sharpness(dist: ContinuousPredictiveDistribution, alpha: float = 0.10) -> fl
     Raises
     ------
     ValueError
-        If alpha not within (0.0, 1.0)
+        If alpha not within (0.0, 1.0), or decimals is negative.
+    TypeError
+        If decimals is neither None nor an integer.
 
     """
     if not 0.0 < alpha < 1.0:
         raise ValueError("Significance level 'alpha' must lie within (0.0, 1.0).")
 
-    lower, upper = dist.interval(alpha=alpha)
+    lower, upper = dist.interval(alpha=alpha, decimals=decimals)
     return float(np.mean(upper - lower))
 
 
@@ -454,6 +473,7 @@ def winkler_score(
     dist: ContinuousPredictiveDistribution,
     alpha: float = 0.10,
     sample_weight: Union[ArrayLike, None] = None,
+    decimals: Union[int, None] = None,
 ) -> float:
     """Compute mean Winkler score for prediction intervals at significance level alpha.
 
@@ -470,6 +490,11 @@ def winkler_score(
         Tail significance level in range (0.0, 1.0).
     sample_weight : ArrayLike of shape (n_samples,), optional
         Sample weights for weighted mean computation.
+    decimals : int or None, default=None
+        Number of decimals of the interval bounds, passed to
+        `dist.interval`. ``None`` keeps the raw bounds, ``0`` rounds both
+        up with ``ceil`` (for integer targets), and a positive integer
+        rounds to that many places.
 
     Returns
     -------
@@ -479,14 +504,16 @@ def winkler_score(
     Raises
     ------
     ValueError
-        If alpha not within (0.0, 1.0)
+        If alpha not within (0.0, 1.0), or decimals is negative.
+    TypeError
+        If decimals is neither None nor an integer.
 
     """
     if not 0.0 < alpha < 1.0:
         raise ValueError("Significance level 'alpha' must lie within (0.0, 1.0).")
 
     y_true_arr = np.asarray(y_true, dtype=float)
-    lower, upper = dist.interval(alpha=alpha)
+    lower, upper = dist.interval(alpha=alpha, decimals=decimals)
 
     width = upper - lower
     under_penalty = (2.0 / alpha) * (lower - y_true_arr) * (y_true_arr < lower)
