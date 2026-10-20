@@ -18,6 +18,12 @@ that many decimals.
 forwarded to `interval`.
 * New tests for the `models` script to achieve 100% coverage.
 * New tests for the additional functionalities.
+* `mypy` and `matplotlib` in the `dev` dependencies, and a GitHub Action that runs
+`mypy` on the source code.
+* Documentation notes that `matplotlib` is needed to run the plotting examples.
+
+### Fixed
+* Type errors reported by `mypy` in `distributions.py`, `mappers.py` and `models.py`.
 
 ### Changed
 * Updated the `interval_evaluation.py` example, and its documentation in
