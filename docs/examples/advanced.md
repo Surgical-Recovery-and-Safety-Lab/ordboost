@@ -52,6 +52,10 @@ Full example:
 
 ### Bounded data and atoms
 
+**NOTE**: This example plots its results and needs `matplotlib`. Install it with
+`pip install matplotlib`, or install the package with the development extras
+(`pip install -e ".[dev]"`).
+
 This example demonstrates the use of the `lower_bound` and `upper_bound` attributes
 with and whitout atoms. We will look at the effects these have on the model.
 Let's start by generating some synthetic data. For this example, we want to include

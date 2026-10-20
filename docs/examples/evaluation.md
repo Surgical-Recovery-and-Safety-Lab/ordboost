@@ -88,6 +88,10 @@ Full example:
 ```
 
 ### Model calibration diagnostics
+
+**NOTE**: This example plots its results and needs `matplotlib`. Install it with
+`pip install matplotlib`, or install the package with the development extras
+(`pip install -e ".[dev]"`).
 Evaluating the calibration of a model is crucial to know if the predictions can be
 trusted. The `OrdBoostRegressor` generates CDFs for each patient, so we use two 
 different methods to evaluate the calibration in this example: the Probability

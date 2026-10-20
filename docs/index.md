@@ -39,6 +39,11 @@ pip install ordboost
 
 ```
 
+**NOTE**: Some of the examples (model calibration diagnostics and bounded data and
+atoms) produce plots and need `matplotlib`, which is not installed with the package.
+Run `pip install matplotlib`, or install the development extras
+(`pip install -e ".[dev]"`, see below) which include it.
+
 ### Installing from source (Developer setup)
 
 To set up a local development environment and contribute to **ordboost**:

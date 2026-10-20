@@ -46,6 +46,10 @@ pip install ordboost
 
 *Note: It is recommended to install the package inside a virtual environment (`venv` or `conda`).*
 
+Some of the plotting examples (calibration and bounded-data) additionally need
+`matplotlib`. Install it with `pip install matplotlib`, or install the development
+extras with `pip install -e ".[dev]"` from a clone of the repository.
+
 ---
 
 ## Quickstart Examples
