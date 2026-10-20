@@ -74,7 +74,7 @@ baseline.
 
 The results should be:
 ```
-MAE:   3.824
+MAE:   3.821
 CRPS:  2.813
 CRPSS: 0.514
 ```
@@ -199,6 +199,11 @@ metrics are simply printed in a table, but they could also be plotted as a
 curve if needed. This option is particularly useful when evaluating a larger range
 of $\alpha$ values.
 
+The target in this example is integer-valued, so the `decimals` parameter is set
+to 0 and the interval bounds are rounded up to integers (using `ceil`, which is
+the correct rounding for the bins used by the model). A positive value rounds to
+that many decimals, and `None` (the default) uses the raw bounds.
+
 ``` python linenums="1"
 {%
     include "../../examples/interval_evaluation.py"
@@ -211,9 +216,9 @@ The table should be:
 ```
 Nominal coverage | Coverage | Sharpness | Winkler score
 -------------------------------------------------------
-      90%        |  72.0%   |    7.76   |    18.77
-      80%        |  61.5%   |    5.97   |    14.14
-      50%        |  38.5%   |    3.12   |    9.05
+      90%        |  75.0%   |    7.40   |    19.25
+      80%        |  63.0%   |    5.65   |    14.70
+      50%        |  43.5%   |    2.84   |    9.60
 ```
 
 Full example:
