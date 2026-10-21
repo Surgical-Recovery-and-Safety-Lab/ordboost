@@ -435,6 +435,36 @@ class TestGetItem:
         assert sub.mean().shape == (0,)
 
 
+class TestAtomFlags:
+    """Tests for the floor_atom / ceiling_atom flags."""
+
+    GRID_Y = np.array([0.0, 1.0, 2.0])
+    GRID_CDF = np.array([[0.0, 0.5, 1.0], [0.0, 0.2, 1.0]])
+
+    def test_default_flags_are_none(self) -> None:
+        """Test that flags default to None (unknown)."""
+        dist = ContinuousPredictiveDistribution(self.GRID_Y, self.GRID_CDF)
+        assert dist.floor_atom is None
+        assert dist.ceiling_atom is None
+
+    def test_flags_are_stored_as_bool(self) -> None:
+        """Test that flags are stored on the distribution."""
+        dist = ContinuousPredictiveDistribution(
+            self.GRID_Y, self.GRID_CDF, floor_atom=True, ceiling_atom=False
+        )
+        assert dist.floor_atom is True
+        assert dist.ceiling_atom is False
+
+    def test_flags_survive_indexing(self) -> None:
+        """Test that row indexing preserves the flags."""
+        dist = ContinuousPredictiveDistribution(
+            self.GRID_Y, self.GRID_CDF, floor_atom=True, ceiling_atom=False
+        )
+        for sub in (dist[0], dist[:1], dist[[True, False]]):
+            assert sub.floor_atom is True
+            assert sub.ceiling_atom is False
+
+
 class TestIntervalDecimals:
     """Tests for interval rounding on a real continuous distribution."""
 

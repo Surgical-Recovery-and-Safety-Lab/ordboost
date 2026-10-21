@@ -323,8 +323,23 @@ def pinball_loss_skill_score(
     return 1.0 - (loss_model / loss_baseline)
 
 
+def _resolve_atoms(
+    dist: ContinuousPredictiveDistribution, mapper: Union[BaseBinMapper, None]
+) -> tuple[bool, bool]:
+    """Return `(floor_atom, ceiling_atom)` from `dist`, else `mapper`, else False."""
+    flags = []
+    for name in ("floor_atom", "ceiling_atom"):
+        flag = getattr(dist, name, None)
+        if flag is None:
+            flag = getattr(mapper, name, False)
+        flags.append(bool(flag))
+    return flags[0], flags[1]
+
+
 def marginal_calibration_curve(
-    y_true: ArrayLike, dist: ContinuousPredictiveDistribution, mapper: BaseBinMapper
+    y_true: ArrayLike,
+    dist: ContinuousPredictiveDistribution,
+    mapper: Union[BaseBinMapper, None] = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Compute the difference between the empirical CDF and the average CDF.
 
@@ -334,11 +349,12 @@ def marginal_calibration_curve(
         True continuous target values.
     dist : ContinuousPredictiveDistribution
         Predicted continuous distributions.
-    mapper : BaseBinMapper
-        The (fitted or unfitted) mapper instance whose `floor_atom` and
-        `ceiling_atom` flags determine which grid points are treated as
-        atoms. Only these two boolean attributes are read; the mapper
-        does not need to be fitted.
+    mapper : BaseBinMapper or None, default=None
+        Fallback source of the `floor_atom` and `ceiling_atom` flags, used
+        only for a flag that `dist` does not carry (``None``), e.g. a
+        distribution built by hand. Flags set on `dist` take precedence.
+        Only these two attributes are read; the mapper does not need to be
+        fitted. If neither source sets a flag, no atom is assumed.
 
     Returns
     -------
@@ -354,9 +370,10 @@ def marginal_calibration_curve(
     mean_cdf = dist.grid_cdf.mean(axis=0)
     empirical_cdf = np.array([np.mean(y_true_arr < x) for x in grid_y])
 
-    if getattr(mapper, "floor_atom", False):
+    floor_atom, ceiling_atom = _resolve_atoms(dist, mapper)
+    if floor_atom:
         mean_cdf[1] = 0.0  # left-hand limit at the floor atom
-    if getattr(mapper, "ceiling_atom", False):
+    if ceiling_atom:
         empirical_cdf[-1] = 1  # by convention
 
     return grid_y, empirical_cdf - mean_cdf
@@ -536,7 +553,7 @@ def winkler_score(
 def pit_diagnostics(
     y_true: ArrayLike,
     dist: ContinuousPredictiveDistribution,
-    mapper: BaseBinMapper,
+    mapper: Union[BaseBinMapper, None] = None,
     precision: Union[int, None] = 2,
     resolution: float = 1.0,
 ) -> PitFcstAtObs:
@@ -559,12 +576,13 @@ def pit_diagnostics(
         (e.g. integer days).
     dist : ContinuousPredictiveDistribution
         Predicted continuous distributions, with `grid_y`/`grid_cdf`
-        constructed by `mapper`.
-    mapper : BaseBinMapper
-        The (fitted or unfitted) mapper instance whose `floor_atom` and
-        `ceiling_atom` flags determine which grid points are treated as
-        atoms. Only these two boolean attributes are read; the mapper
-        does not need to be fitted.
+        constructed by a bin mapper.
+    mapper : BaseBinMapper or None, default=None
+        Fallback source of the `floor_atom` and `ceiling_atom` flags, used
+        only for a flag that `dist` does not carry (``None``), e.g. a
+        distribution built by hand. Flags set on `dist` take precedence.
+        Only these two attributes are read; the mapper does not need to be
+        fitted. If neither source sets a flag, no atom is assumed.
     precision : int or None, default=2
         Number of decimal places to round the PIT bounds to before
         constructing `PitFcstAtObs`. Pass `None` to disable rounding
@@ -615,14 +633,15 @@ def pit_diagnostics(
     fcst_at_obs_left = cdf_at_y.copy()
     fcst_at_obs = dist.cdf(y_true_arr + resolution)
 
-    if getattr(mapper, "floor_atom", False):
+    floor_atom, ceiling_atom = _resolve_atoms(dist, mapper)
+    if floor_atom:
         floor_value = dist.grid_y[1]
         at_floor = np.isclose(y_true_arr, floor_value)
         # The atom is a point mass, not a bin: interval is [0, mass at floor]
         fcst_at_obs_left[at_floor] = 0.0
         fcst_at_obs[at_floor] = cdf_at_y[at_floor]
 
-    if getattr(mapper, "ceiling_atom", False):
+    if ceiling_atom:
         ceiling_value = dist.grid_y[-1]
         # per-sample value just before the ceiling atom
         just_below_ceiling = dist.grid_cdf[:, -2]

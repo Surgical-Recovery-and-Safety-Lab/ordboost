@@ -690,6 +690,75 @@ class TestMarginalCalibrationCurve:
         assert calibration[-1] == pytest.approx(0.0)
 
 
+class TestAtomFlagResolution:
+    """Tests that atom flags come from the distribution, with the mapper as fallback."""
+
+    GRID_Y = np.array([-0.0001, 0.0, 5.0, 9.9999, 10.0])
+    GRID_CDF = np.array([[0.0, 0.4, 0.7, 0.85, 1.0], [0.0, 0.1, 0.5, 0.90, 1.0]])
+
+    def _dist(self, **flags) -> ContinuousPredictiveDistribution:
+        return ContinuousPredictiveDistribution(self.GRID_Y, self.GRID_CDF, **flags)
+
+    def test_marginal_calibration_uses_dist_flags_without_mapper(self) -> None:
+        """Test that dist flags alone reproduce the mapper-flag result."""
+        y_true = np.array([3.0, 10.0])
+        mapper = MagicMock(spec=BaseBinMapper, floor_atom=True, ceiling_atom=True)
+        _, expected = marginal_calibration_curve(y_true, self._dist(), mapper)
+        _, actual = marginal_calibration_curve(
+            y_true, self._dist(floor_atom=True, ceiling_atom=True)
+        )
+        np.testing.assert_allclose(actual, expected)
+        assert actual[-1] == pytest.approx(0.0)
+
+    def test_marginal_calibration_without_flags_assumes_no_atoms(self) -> None:
+        """Test that unflagged dist and no mapper means no atom correction."""
+        _, calibration = marginal_calibration_curve(np.array([3.0, 10.0]), self._dist())
+        assert calibration[-1] == pytest.approx(-1.0 + 0.5)
+
+    def test_mapper_is_fallback_when_dist_flag_is_none(self) -> None:
+        """Test that a mapper fills in flags the dist leaves as None."""
+        mapper = MagicMock(spec=BaseBinMapper, floor_atom=True, ceiling_atom=False)
+        _, calibration = marginal_calibration_curve(
+            np.array([3.0, 7.0]), self._dist(), mapper
+        )
+        assert calibration[1] == pytest.approx(0.0)
+
+    def test_dist_flags_take_precedence_over_mapper(self) -> None:
+        """Test that an explicit False on the dist beats a True mapper flag."""
+        mapper = MagicMock(spec=BaseBinMapper, floor_atom=True, ceiling_atom=True)
+        _, calibration = marginal_calibration_curve(
+            np.array([3.0, 7.0]),
+            self._dist(floor_atom=False, ceiling_atom=False),
+            mapper,
+        )
+        assert calibration[1] != pytest.approx(0.0)
+
+    @patch("ordboost.metrics.PitFcstAtObs")
+    def test_pit_uses_dist_flags_without_mapper(self, mock_pit_cls) -> None:
+        """Test that pit_diagnostics applies the dist's floor atom."""
+        dist = self._dist(floor_atom=True, ceiling_atom=False)
+        pit_diagnostics(np.array([0.0, 8.0]), dist, precision=None)
+        fcst_left = mock_pit_cls.call_args[1]["fcst_at_obs_left"].values
+        assert fcst_left[0] == 0.0
+
+    @patch("ordboost.metrics.PitFcstAtObs")
+    def test_pit_mapper_fallback_matches_dist_flags(self, mock_pit_cls) -> None:
+        """Test that mapper fallback and dist flags give identical PIT bounds."""
+        y_true = np.array([0.0, 10.0])
+        mapper = MagicMock(spec=BaseBinMapper, floor_atom=True, ceiling_atom=True)
+        pit_diagnostics(y_true, self._dist(), mapper, precision=None)
+        via_mapper = mock_pit_cls.call_args
+        pit_diagnostics(
+            y_true, self._dist(floor_atom=True, ceiling_atom=True), precision=None
+        )
+        via_dist = mock_pit_cls.call_args
+        np.testing.assert_allclose(via_mapper[0][0].values, via_dist[0][0].values)
+        np.testing.assert_allclose(
+            via_mapper[1]["fcst_at_obs_left"].values,
+            via_dist[1]["fcst_at_obs_left"].values,
+        )
+
+
 class TestIntervalCoverageRate:
     """Tests for prediction interval coverage rate."""
 

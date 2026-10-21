@@ -584,6 +584,24 @@ class TestToContinuousDist:
         assert dist.grid_cdf[0, 0] == pytest.approx(0.0)
         assert dist.grid_cdf[0, -1] == pytest.approx(1.0)
 
+    @pytest.mark.parametrize(
+        "floor_atom, ceiling_atom", [(False, False), (True, False), (True, True)]
+    )
+    def test_dist_carries_mapper_atom_flags(self, floor_atom, ceiling_atom) -> None:
+        """Test that the returned distribution copies the mapper's atom flags."""
+        mapper = DummyBinMapper(
+            bin_edges=[10.0],
+            lower_bound=0.0,
+            upper_bound=20.0,
+            floor_atom=floor_atom,
+            ceiling_atom=ceiling_atom,
+        )
+        mapper.fit(np.array([0.0, 5.0, 15.0, 20.0]))
+        dist = mapper.to_continuous_dist(np.array([[0.6, 0.4], [0.2, 0.8]]))
+        assert dist.floor_atom is floor_atom
+        assert dist.ceiling_atom is ceiling_atom
+        assert dist[:1].floor_atom is floor_atom
+
 
 class TestTransform:
     """Tests for BaseBinMapper.transform."""

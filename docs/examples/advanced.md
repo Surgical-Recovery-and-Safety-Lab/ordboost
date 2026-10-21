@@ -112,13 +112,13 @@ The code will generate the following table:
 
 ```
         Bounded | Boundless
-MAE:     1.712  |    1.745
-CRPS:    0.993  |    1.005
-CRPSS:   0.313  |    0.305
+MAE:     1.712  |    1.846
+CRPS:    0.993  |    1.126
+CRPSS:   0.313  |    0.221
 ```
 
-Both model exhibit similar performances, with the bounded model showing a marginal
-improvement over the boundless model (lower CRPS and MAE and higher CPRSS). Now
+The bounded model performs better than the boundless model, with a lower CRPS and
+MAE and a higher CRPSS. Now
 let us take a look at the prediction intervals. We compute the interval coverage 
 rate, the sharpness, and the Winkler score at difference significance levels and 
 plot the results.
@@ -136,9 +136,18 @@ The code will generate the following results:
 ![prediction_intervals](../assets/atom_intervals.png)
 
 Now the difference between the bounded and boundless model becomes more apparent. 
-The boundless model has too much coverage, the true value falls in the interval
-more often then expected. On the other hand, the bounded model has too little 
-coverage. Both model have similar sharpness and Winkler scores.
+The boundless model has too little coverage: it cannot place mass at zero, so its
+intervals start above zero and miss the zero targets. The bounded model has too much
+coverage.
+
+!!! note
+    The bounded model's over-coverage is expected and cannot be removed by a better
+    model. About half of the targets are exactly zero, so any interval that contains
+    zero already covers about 50% of them, and the coverage cannot fall much below that
+    at low nominal levels. The central interval also stretches from the floor up to
+    the upper quantile whenever the zero probability exceeds the tail level, which makes
+    it conservative. Coverage is only meaningful at the higher nominal levels, where the
+    bounded model gets close to nominal.
 
 Finally, let's look at the calibration. We will compute the PIT histograms and the
 marginal calibration curves for both models and plot the results.
@@ -154,18 +163,20 @@ The code will generate the following results:
 
 ![marginal_calibration](../assets/atom_marginal_calibration.png)
 
-The marginal calibration clearly shows a difference between the bounded and the 
-boundless model near 0. This is exactly where the floor atom is located. Without the
-floor atom and lower bound set, the model is miscalibrated in that lower region. The
-upper bound also shows an effect however much weaker than at the floor.
+The marginal calibration curves of the two models are identical. Both models share
+the same classifier and the same grid points, which fall on the bin edges, where the
+average predicted CDF depends only on the predicted bin probabilities. The curve is
+also exactly zero at the floor, since the left-hand limit of the CDF is used there.
+The marginal calibration therefore cannot separate the two models on this example,
+and the difference at the floor atom only shows up in the PIT histogram.
 
 ![PIT](../assets/atom_pit_histogram.png)
 
-The PIT histograms corroborate the results from the marginal calibration. The 
-boundless model systematically underestimates the target values which creates a PIT
-histogram with a peak near 0.6 and $\alpha$ score of 0.104. In contrast, the bounded
-model has PIT histogram that is near uniform and an $\alpha$ score of 0.011, 10 
-times smaller.
+The PIT histograms show the effect of the floor atom. The boundless model cannot
+place mass at zero, so the zero targets pile up in the first PIT bin, which holds
+about half of the observations, and the $\alpha$ score is 0.189. In contrast, the
+bounded model has a PIT histogram that is near uniform and an $\alpha$ score of
+0.011, about 17 times smaller.
 
 These results clearly show the effects of using the atoms and bounds to constrain
 the models.
