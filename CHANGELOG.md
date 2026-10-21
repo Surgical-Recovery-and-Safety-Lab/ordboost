@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to Semantic Versioning ([SemVer](https://semver.org/spec/v2.0.0.html)).
 
+## [0.6.1] - 2026-10-21
+
+### Added
+* `floor_atom` and `ceiling_atom` parameters and attributes on
+`ContinuousPredictiveDistribution` (`None` = unknown, the default). They are set by
+`BaseBinMapper.to_continuous_dist` and preserved by row indexing.
+
+### Changed
+* `marginal_calibration_curve` and `pit_diagnostics` read the atom flags from `dist`.
+The `mapper` argument is now optional and only used as a fallback for flags the
+distribution leaves as `None` (e.g. a hand-built distribution). Existing calls that
+pass a mapper keep working, and calls with two arguments no longer fail.
+* Examples and documentation no longer pass the mapper to these two functions.
+* Regenerated example figures.
+
 ## [0.6.0] - 2026-10-21
 
 ### Added
@@ -197,7 +212,8 @@ contains the code for interval evaluation example.
 * Unit tests
 * Github workflow to run tests on push and pull request
 
-[Unreleased]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.5.0...v0.6.0
 [v0.5.0]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.3.1...v0.4.0
