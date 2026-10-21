@@ -110,9 +110,8 @@ The target is a linear combination of features plus purely random Gaussian noise
 
 Now we can fit the model to the train data and generate the predicted CDFs.
 First, we create a `UniformBinMapper` that is passed to the `OrdBoostRegressor`. The
-mapper will be needed later so we defined it before. However, you can always get the
-fitted mapper from the regressor with `reg.mapper_`. After fitting the model, we 
-estimate the distributions of the test set with `predict_dist`.
+fitted mapper is available from the regressor with `reg.mapper_`. After fitting the
+model, we estimate the distributions of the test set with `predict_dist`.
 
 ``` python linenums="1"
 {%

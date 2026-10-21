@@ -31,7 +31,7 @@ dist = reg.predict_dist(X_test)
 # Calculate PIT values
 n_bins = 20
 # The target is continuous, so use a negligible resolution
-pit = pit_diagnostics(y_test, dist, mapper, precision=2, resolution=1e-6)
+pit = pit_diagnostics(y_test, dist, precision=2, resolution=1e-6)
 pit_values = pit.hist_values(bins=n_bins)
 alpha_value = pit.alpha_score()
 
@@ -53,7 +53,7 @@ plt.show()
 
 
 # --- Marginal calibration
-grid, marginal_calibration = marginal_calibration_curve(y_test, dist, mapper)
+grid, marginal_calibration = marginal_calibration_curve(y_test, dist)
 
 # Plot marignal calibration
 plt.plot(grid, marginal_calibration, linewidth=2, label="Model calibration")

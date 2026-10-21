@@ -141,6 +141,9 @@ winkler_no_bounds = np.array(
     [winkler_score(y_test, dist_test_no_bounds, alpha=a) for a in alphas]
 )
 
+# Note: about half of the targets are exactly 0, so any interval containing 0
+# already covers about 50% of them. The bounded model therefore over-covers at
+# low nominal levels, whatever the quality of the model.
 fig, axes = plt.subplots(1, 3, figsize=(15, 4))
 
 axes[0].plot(
@@ -198,9 +201,9 @@ plt.show()
 
 # Marginal calibration: aggregate comparison of the empirical CDF against
 # the average predicted CDF across all test samples.
-grid_y, calibration = marginal_calibration_curve(y_test, dist_test, model.mapper_)
+grid_y, calibration = marginal_calibration_curve(y_test, dist_test)
 grid_y_no_bounds, calibration_no_bounds = marginal_calibration_curve(
-    y_test, dist_test_no_bounds, model_no_bounds.mapper_
+    y_test, dist_test_no_bounds
 )
 
 fig, ax = plt.subplots(figsize=(7, 5))
@@ -220,17 +223,16 @@ ax.set_title("Marginal calibration curve")
 plt.show()
 
 # Randomized PIT histogram: per-sample calibration check, aware of the
-# floor atom via model.mapper_.floor_atom (True here) and correctly
+# floor atom via dist_test.floor_atom (True here) and correctly
 # treating the ceiling as a plain boundary rather than an atom, since
-# model.mapper_.ceiling_atom is False.
-pit = pit_diagnostics(y_test, dist_test, model.mapper_, resolution=1e-6)
+# dist_test.ceiling_atom is False.
+pit = pit_diagnostics(y_test, dist_test, resolution=1e-6)
 hist = pit.hist_values(bins=20)
 alpha_score = pit.alpha_score()
 
 pit_no_bounds = pit_diagnostics(
     y_test,
     dist_test_no_bounds,
-    model_no_bounds.mapper_,
     resolution=1e-6,
 )
 hist_no_bounds = pit_no_bounds.hist_values(bins=20)
