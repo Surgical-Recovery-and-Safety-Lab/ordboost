@@ -474,7 +474,12 @@ class BaseBinMapper(ABC, BaseEstimator, TransformerMixin):
         for i in range(n_samples):
             grid_cdf[i] = np.interp(self.grid_cdf_weights_, x_grid, cum_pmf[i])
 
-        return ContinuousPredictiveDistribution(grid_y=self.grid_y_, grid_cdf=grid_cdf)
+        return ContinuousPredictiveDistribution(
+            grid_y=self.grid_y_,
+            grid_cdf=grid_cdf,
+            floor_atom=self.floor_atom,
+            ceiling_atom=self.ceiling_atom,
+        )
 
     def transform(self, pmf: ArrayLike) -> np.ndarray:
         """Map a discrete PMF matrix to continuous point estimates.

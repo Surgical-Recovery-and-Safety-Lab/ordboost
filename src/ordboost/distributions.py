@@ -483,6 +483,13 @@ class ContinuousPredictiveDistribution(PredictiveDistribution):
         evaluated cumulative probabilities across grid points. Every
         row's first value must be 0.0 and last value must be 1.0 (within
         tolerance) for `mean()` to return an unbiased estimate.
+    floor_atom : bool or None, default=None
+        Whether the first interior grid point (``grid_y[1]``) carries a point
+        mass at the lower bound. ``None`` means unknown: metrics that need
+        the flag fall back to a mapper if one is given, else assume no atom.
+        Set by `BaseBinMapper.to_continuous_dist`.
+    ceiling_atom : bool or None, default=None
+        Mirrors `floor_atom` for the last grid point (``grid_y[-1]``).
 
     Attributes
     ----------
@@ -491,6 +498,10 @@ class ContinuousPredictiveDistribution(PredictiveDistribution):
     grid_cdf : np.ndarray
         2D float array containing cumulative probabilities, clipped to
         [0.0, 1.0] as a read-only object.
+    floor_atom : bool or None
+        See the parameter of the same name. Preserved by row indexing.
+    ceiling_atom : bool or None
+        See the parameter of the same name. Preserved by row indexing.
 
     Methods
     -------
@@ -520,7 +531,13 @@ class ContinuousPredictiveDistribution(PredictiveDistribution):
 
     _CDF_BOUNDARY_ATOL = 1e-6
 
-    def __init__(self, grid_y: np.ndarray, grid_cdf: np.ndarray) -> None:
+    def __init__(
+        self,
+        grid_y: np.ndarray,
+        grid_cdf: np.ndarray,
+        floor_atom: Union[bool, None] = None,
+        ceiling_atom: Union[bool, None] = None,
+    ) -> None:
         y_arr = np.asarray(grid_y, dtype=float)
         cdf_arr = np.asarray(grid_cdf, dtype=float)
 
@@ -538,14 +555,21 @@ class ContinuousPredictiveDistribution(PredictiveDistribution):
         self.grid_cdf = cdf_arr.copy()
         self.grid_cdf.flags.writeable = False  # Convert to read-only
         self._n_samples = cdf_arr.shape[0]
+        self.floor_atom = None if floor_atom is None else bool(floor_atom)
+        self.ceiling_atom = None if ceiling_atom is None else bool(ceiling_atom)
 
     def __len__(self) -> int:
         """Return the number of samples."""
         return int(self._n_samples)
 
     def _take(self, idx: np.ndarray) -> "ContinuousPredictiveDistribution":
-        """Select samples, sharing the common `grid_y`."""
-        return ContinuousPredictiveDistribution(self.grid_y, self.grid_cdf[idx])
+        """Select samples, sharing the common `grid_y` and atom flags."""
+        return ContinuousPredictiveDistribution(
+            self.grid_y,
+            self.grid_cdf[idx],
+            floor_atom=self.floor_atom,
+            ceiling_atom=self.ceiling_atom,
+        )
 
     @staticmethod
     def _validate_normalized_cdf_grid(
