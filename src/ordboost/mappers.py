@@ -238,6 +238,52 @@ class BaseBinMapper(ABC, BaseEstimator, TransformerMixin):
             return float(np.mean(bin_data < boundary))
         return float(np.mean(bin_data <= boundary))
 
+    def _atom_weight_range(
+        self, bin_data: np.ndarray, low: float, high: float, k: int
+    ) -> tuple[float, float]:
+        """Return the within-bin weight range left over by boundary atoms.
+
+        Intended for `_intra_bin_points` implementations that assign
+        weights by assumption (e.g. uniform interpolation) rather than
+        from the bin's empirical distribution. Such weights should be
+        mapped into ``[k + lo, k + hi]`` instead of ``[k, k + 1]``, so that
+        they remain consistent with the boundary atom weights added by
+        `_build_grid` and the fitted CDF stays monotone. Empirically
+        derived weights already include atom mass and need no adjustment.
+
+        Only valid during `fit`, after `_build_grid` has set the number of
+        bins being fitted.
+
+        Parameters
+        ----------
+        bin_data : ndarray of shape (n_bin_samples,)
+            Continuous training targets belonging to bin `k`.
+        low : float
+            The effective lower boundary of bin `k`.
+        high : float
+            The effective upper boundary of bin `k`.
+        k : int
+            The 0-indexed bin number.
+
+        Returns
+        -------
+        lo : float
+            Fraction of bin `k`'s mass held by a floor atom at `low`
+            (0.0 unless `floor_atom` is True and `k == 0`).
+        hi : float
+            Fraction of bin `k`'s mass strictly below a ceiling atom at
+            `high` (1.0 unless `ceiling_atom` is True and `k` is the last
+            bin). Never smaller than `lo`.
+
+        """
+        lo = 0.0
+        hi = 1.0
+        if self.floor_atom and k == 0:
+            lo = self._boundary_atom_weight(bin_data, low, side="lower")
+        if self.ceiling_atom and k == self._n_bins_fit - 1:
+            hi = self._boundary_atom_weight(bin_data, high, side="upper")
+        return lo, max(hi, lo)
+
     def _build_grid(
         self, y_continuous: ArrayLike, y_binned: Union[ArrayLike, None] = None
     ) -> None:
@@ -285,6 +331,7 @@ class BaseBinMapper(ABC, BaseEstimator, TransformerMixin):
             raise ValueError("Expected 'y_continuous' to be a 1D array.")
 
         n_bins = len(edges) + 1
+        self._n_bins_fit = n_bins
         binned = self.digitize(y_cont, edges, y_binned)
 
         y_min, y_max = float(y_cont.min()), float(y_cont.max())
@@ -566,7 +613,8 @@ class EmpiricalMeanBinMapper(BaseBinMapper):
         """
         if len(bin_data) == 0:
             mean_val = (low + high) / 2.0
-            frac_below = 0.5
+            lo, hi = self._atom_weight_range(bin_data, low, high, k)
+            frac_below = lo + 0.5 * (hi - lo)
         else:
             mean_val = float(np.clip(np.mean(bin_data), low, high))
             frac_below = float(np.mean(bin_data < mean_val))
@@ -632,7 +680,8 @@ class EmpiricalMedianBinMapper(BaseBinMapper):
         """
         if len(bin_data) == 0:
             median_val = (low + high) / 2.0
-            frac_below = 0.5
+            lo, hi = self._atom_weight_range(bin_data, low, high, k)
+            frac_below = lo + 0.5 * (hi - lo)
         else:
             median_val = float(np.clip(np.median(bin_data), low, high))
             frac_below = float(np.mean(bin_data < median_val))
@@ -775,7 +824,8 @@ class QuantileBinMapper(BaseBinMapper):
         """
         if len(bin_data) == 0:
             pts = low + (high - low) * self.quantiles_
-            return pts, k + self.quantiles_
+            lo, hi = self._atom_weight_range(bin_data, low, high, k)
+            return pts, k + lo + self.quantiles_ * (hi - lo)
 
         pts = np.clip(np.quantile(bin_data, self.quantiles_), low, high)
         sorted_data = np.sort(bin_data)
@@ -898,7 +948,8 @@ class UniformBinMapper(BaseBinMapper):
             return np.array([]), np.array([])
         fractions = np.arange(1, self.n_points_ + 1, dtype=float) / (self.n_points_ + 1)
         points = low + fractions * (high - low)
-        weights = k + fractions
+        lo, hi = self._atom_weight_range(bin_data, low, high, k)
+        weights = k + lo + fractions * (hi - lo)
         return points, weights
 
 
@@ -1051,6 +1102,7 @@ class ContinuousBinMapper(BaseBinMapper):
         if self.density_weighted and len(bin_data) > 0:
             weights = k + np.array([np.mean(bin_data < p) for p in points])
         else:
-            weights = k + (points - low) / (high - low)
+            lo, hi = self._atom_weight_range(bin_data, low, high, k)
+            weights = k + lo + (points - low) / (high - low) * (hi - lo)
 
         return points, weights
