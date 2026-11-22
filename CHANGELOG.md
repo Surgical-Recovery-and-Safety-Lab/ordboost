@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to Semantic Versioning ([SemVer](https://semver.org/spec/v2.0.0.html)).
 
+## [0.6.2] - 2026-11-23
+
+### Added
+* A new base helper `_atom_weight_range` which returns the mass left in a bin
+after the atoms have been removed.
+* The bin count fitted by `_build_grid` is saved in a private attribute 
+`_n_bins_fit`.
+
+### Fixed
+* A bug that caused the CDF to not be monotone in some edge cases.
+
 ## [0.6.1] - 2026-10-21
 
 ### Added
@@ -212,7 +223,8 @@ contains the code for interval evaluation example.
 * Unit tests
 * Github workflow to run tests on push and pull request
 
-[Unreleased]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.6.1...HEAD
+[Unreleased]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.6.2...HEAD
+[Unreleased]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.6.1...v0.6.2
 [0.6.1]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.5.0...v0.6.0
 [v0.5.0]: https://github.com/Surgical-Recovery-and-Safety-Lab/ordboost/compare/v0.4.0...v0.5.0
